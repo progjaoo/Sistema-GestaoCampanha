@@ -118,7 +118,10 @@ router.get("/campaign/overview", async (req, res): Promise<void> => {
       .where(leadershipScopeCondition(principal)),
   ]);
   const visibleRegionIds = new Set(cities.map((city) => city.regionId));
-  const visibleRegions = regions.filter((region) => visibleRegionIds.has(region.id));
+  if (principal.user.role === "ADMIN_GERAL" || principal.user.role === "ARTICULADOR") {
+    if (principal.user.regionId) visibleRegionIds.add(principal.user.regionId);
+  }
+  const visibleRegions = regions.filter((region) => principal.user.role === "ADMIN_GERAL" || visibleRegionIds.has(region.id));
 
   const regionRows = regions.map((region) => ({
     id: region.id,
@@ -146,7 +149,7 @@ router.get("/campaign/overview", async (req, res): Promise<void> => {
       leaderships: leaderships.length,
       reviewItems: leaderships.filter((leadership) => leadership.needsReview).length,
     },
-    regions: regionRows.filter((region) => visibleRegionIds.has(region.id)).sort((a, b) => b.leadershipCount - a.leadershipCount),
+    regions: regionRows.filter((region) => principal.user.role === "ADMIN_GERAL" || visibleRegionIds.has(region.id)).sort((a, b) => b.leadershipCount - a.leadershipCount),
     topDeputies: [...deputyCounts.entries()]
       .map(([name, leadershipCount]) => ({ name, leadershipCount }))
       .sort((a, b) => b.leadershipCount - a.leadershipCount)
@@ -168,8 +171,11 @@ router.get("/regions", async (req, res): Promise<void> => {
       .where(leadershipScopeCondition(principal)),
   ]);
   const visibleRegionIds = new Set(cities.map((city) => city.regionId));
+  if (principal.user.role === "ADMIN_GERAL" || principal.user.role === "ARTICULADOR") {
+    if (principal.user.regionId) visibleRegionIds.add(principal.user.regionId);
+  }
 
-  const data = regions.filter((region) => visibleRegionIds.has(region.id)).map((region) => ({
+  const data = regions.filter((region) => principal.user.role === "ADMIN_GERAL" || visibleRegionIds.has(region.id)).map((region) => ({
     id: region.id,
     name: region.name,
     cityCount: cities.filter((city) => city.regionId === region.id).length,

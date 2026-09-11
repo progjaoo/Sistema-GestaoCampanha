@@ -99,7 +99,7 @@ async function seed() {
     ]);
 
   const expected = {
-    regions: 7,
+    regions: 8,
     cities: 53,
     deputies: 23,
     articulators: 33,
@@ -312,7 +312,7 @@ async function seed() {
 seed()
   .then(() => {
     process.stdout.write(
-      "Campaign seed completed: 7 regions, 53 cities, 23 deputies, 33 articulators, 55 coordinators, 681 leaderships.\n",
+      "Campaign seed completed: 8 regions, 53 cities, 23 deputies, 33 articulators, 55 coordinators, 681 leaderships.\n",
     );
   })
   .catch((error: unknown) => {
