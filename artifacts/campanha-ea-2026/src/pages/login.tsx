@@ -35,7 +35,7 @@ export default function LoginPage() {
           </div>
           <div className="flex items-center gap-2 text-xs text-sidebar-foreground/55"><ShieldCheck size={15} /> Permissões aplicadas no servidor</div>
         </div>
-        <div className="p-7 sm:p-12">
+        <div className="p-7 text-foreground sm:p-12">
           <div className="mb-9 md:hidden"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground"><Map size={19} /></div><div><p className="font-extrabold">EA 2026</p><p className="mono-label text-muted-foreground">sala de operações</p></div></div></div>
           <div className="max-w-md"><p className="mono-label text-primary">Acesso da equipe</p><h2 className="mt-2 text-3xl font-extrabold tracking-[-.04em]">Entrar no sistema</h2><p className="mt-3 text-sm leading-6 text-muted-foreground">Use seu e-mail e senha para acessar a visão autorizada para você.</p></div>
           <form onSubmit={submit} className="mt-9 max-w-md space-y-5">

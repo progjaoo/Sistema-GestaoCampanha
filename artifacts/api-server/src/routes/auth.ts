@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import {
   authPermissionsTable,
   authRolePermissionsTable,
   authUsersTable,
   citiesTable,
   db,
+  leadershipsTable,
   regionsTable,
 } from "@workspace/db";
 import {
@@ -222,7 +223,16 @@ router.patch(
 router.get(
   "/auth/users",
   requireAnyPermission(["users:manage", "leader-users:create"]),
-  async (_req, res): Promise<void> => {
+  async (req, res): Promise<void> => {
+    const principal = req.auth!;
+    const userScope = principal.user.role === "ADMIN_GERAL"
+      ? undefined
+      : and(
+          eq(authUsersTable.role, "LIDERANCA"),
+          principal.user.cityId
+            ? eq(authUsersTable.cityId, principal.user.cityId)
+            : sql`false`,
+        );
     const users = await db
       .select({
         id: authUsersTable.id,
@@ -242,6 +252,7 @@ router.get(
       .from(authUsersTable)
       .leftJoin(regionsTable, eq(regionsTable.id, authUsersTable.regionId))
       .leftJoin(citiesTable, eq(citiesTable.id, authUsersTable.cityId))
+      .where(userScope)
       .orderBy(asc(authUsersTable.fullName));
     res.json(users);
   },
@@ -249,7 +260,7 @@ router.get(
 
 router.post(
   "/auth/users",
-  requirePermission("users:manage"),
+  requireAnyPermission(["users:manage", "leader-users:create"]),
   async (req, res): Promise<void> => {
     const parsed = parseCreateUserBody(req.body);
     if (!parsed || !roleIsValid(parsed.role)) {
@@ -271,10 +282,33 @@ router.post(
       return;
     }
 
-    const cityId = isCoordinatorCreatingLeader ? principal.user.cityId : parsed.cityId ?? null;
+    let cityId = isCoordinatorCreatingLeader ? principal.user.cityId : parsed.cityId ?? null;
+    let regionId = isCoordinatorCreatingLeader ? principal.user.regionId : parsed.regionId ?? null;
+    let leadershipId = parsed.leadershipId ?? null;
     if (isCoordinatorCreatingLeader && !cityId) {
       res.status(403).json({ error: "O coordenador não possui uma cidade vinculada." });
       return;
+    }
+    if (parsed.role === "LIDERANCA") {
+      if (!leadershipId) {
+        res.status(400).json({ error: "Uma liderança deve ser vinculada ao usuário." });
+        return;
+      }
+      const [leadership] = await db
+        .select({ cityId: leadershipsTable.cityId, regionId: citiesTable.regionId })
+        .from(leadershipsTable)
+        .innerJoin(citiesTable, eq(citiesTable.id, leadershipsTable.cityId))
+        .where(eq(leadershipsTable.id, leadershipId));
+      if (!leadership) {
+        res.status(400).json({ error: "A liderança selecionada não existe." });
+        return;
+      }
+      if (isCoordinatorCreatingLeader && leadership.cityId !== cityId) {
+        res.status(403).json({ error: "A liderança está fora da cidade do coordenador." });
+        return;
+      }
+      cityId = leadership.cityId;
+      regionId = leadership.regionId;
     }
     const [existing] = await db
       .select({ id: authUsersTable.id })
@@ -292,9 +326,9 @@ router.post(
         passwordHash: await hashPassword(parsed.password),
         fullName: parsed.fullName.trim(),
         role: parsed.role,
-        regionId: isCoordinatorCreatingLeader ? principal.user.regionId : parsed.regionId ?? null,
+        regionId,
         cityId,
-        leadershipId: isCoordinatorCreatingLeader ? null : parsed.leadershipId ?? null,
+        leadershipId: parsed.role === "LIDERANCA" ? leadershipId : null,
         canCreateLeaderUsers: isAdmin ? parsed.canCreateLeaderUsers ?? false : false,
       })
       .returning();
