@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, isNull, lt, or, sql } from "drizzle-orm";
 import {
   authUsersTable,
   campaignBoardMembersTable,
@@ -616,9 +616,43 @@ router.get(
     if (typeof req.query.status === "string" && ["todo", "in_progress", "blocked", "done"].includes(req.query.status)) {
       conditions.push(eq(campaignTasksTable.status, req.query.status));
     }
+    const requestedAssignee = typeof req.query.assignee === "string" ? req.query.assignee : req.query.assigneeUserId;
+    if (requestedAssignee === "none") {
+      conditions.push(isNull(campaignTasksTable.assigneeUserId));
+    } else {
+      const requestedAssigneeId = numberValue(requestedAssignee);
+      if (requestedAssigneeId) conditions.push(eq(campaignTasksTable.assigneeUserId, requestedAssigneeId));
+    }
+    if (typeof req.query.priority === "string" && ["low", "normal", "high", "urgent"].includes(req.query.priority)) {
+      conditions.push(eq(campaignTasksTable.priority, req.query.priority));
+    }
+    const dueFilter = typeof req.query.due === "string" ? req.query.due : "";
+    const now = new Date();
+    if (dueFilter === "overdue") {
+      conditions.push(and(lt(campaignTasksTable.dueAt, now), sql`${campaignTasksTable.dueAt} IS NOT NULL`));
+    } else if (dueFilter === "today") {
+      const startOfToday = new Date(now);
+      startOfToday.setUTCHours(0, 0, 0, 0);
+      const startOfTomorrow = new Date(startOfToday);
+      startOfTomorrow.setUTCDate(startOfTomorrow.getUTCDate() + 1);
+      conditions.push(and(gte(campaignTasksTable.dueAt, startOfToday), lt(campaignTasksTable.dueAt, startOfTomorrow)));
+    } else if (dueFilter === "next_7_days") {
+      const endOfWindow = new Date(now);
+      endOfWindow.setUTCDate(endOfWindow.getUTCDate() + 7);
+      conditions.push(and(gte(campaignTasksTable.dueAt, now), lt(campaignTasksTable.dueAt, endOfWindow)));
+    } else if (dueFilter === "none") {
+      conditions.push(isNull(campaignTasksTable.dueAt));
+    }
     if (search) {
       const pattern = `%${search}%`;
-      conditions.push(or(ilike(campaignTasksTable.title, pattern), ilike(campaignTasksTable.description, pattern), ilike(citiesTable.name, pattern)));
+      conditions.push(or(
+        ilike(campaignTasksTable.title, pattern),
+        ilike(campaignTasksTable.description, pattern),
+        ilike(citiesTable.name, pattern),
+        ilike(campaignBoardsTable.title, pattern),
+        ilike(leadershipsTable.name, pattern),
+        ilike(authUsersTable.fullName, pattern),
+      ));
     }
     const rows = await db
       .select({

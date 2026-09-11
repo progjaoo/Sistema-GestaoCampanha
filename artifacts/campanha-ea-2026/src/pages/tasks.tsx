@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Archive,
   CalendarClock,
@@ -9,6 +9,7 @@ import {
   History,
   MessageCircle,
   Plus,
+  Search,
   RotateCcw,
   Send,
   SlidersHorizontal,
@@ -123,6 +124,53 @@ const priorityLabels: Record<string, string> = {
   urgent: "Urgente",
 };
 
+const dueLabels: Record<string, string> = {
+  overdue: "Atrasadas",
+  today: "Para hoje",
+  next_7_days: "Próximos 7 dias",
+  none: "Sem prazo",
+};
+
+type TaskFilters = {
+  search: string;
+  assignee: string;
+  priority: string;
+  due: string;
+};
+
+const emptyTaskFilters: TaskFilters = { search: "", assignee: "", priority: "", due: "" };
+
+function readTaskFilters(): TaskFilters {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    search: params.get("search") ?? "",
+    assignee: params.get("assignee") ?? "",
+    priority: params.get("priority") ?? "",
+    due: params.get("due") ?? "",
+  };
+}
+
+function readBoardId(): number | null {
+  const value = Number(new URLSearchParams(window.location.search).get("boardId"));
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function syncTaskUrl(boardId: number | null, filters: TaskFilters): void {
+  const params = new URLSearchParams(window.location.search);
+  if (boardId) params.set("boardId", String(boardId));
+  else params.delete("boardId");
+  if (filters.search.trim()) params.set("search", filters.search.trim());
+  else params.delete("search");
+  if (filters.assignee) params.set("assignee", filters.assignee);
+  else params.delete("assignee");
+  if (filters.priority) params.set("priority", filters.priority);
+  else params.delete("priority");
+  if (filters.due) params.set("due", filters.due);
+  else params.delete("due");
+  const query = params.toString();
+  window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`);
+}
+
 async function json<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "Não foi possível concluir a operação.");
@@ -170,11 +218,13 @@ export default function TasksPage() {
   const cities = useListCities();
   const [showArchived, setShowArchived] = useState(false);
   const [boards, setBoards] = useState<Board[]>([]);
-  const [selectedBoardId, setSelectedBoardId] = useState<number | null>(null);
+  const [selectedBoardId, setSelectedBoardId] = useState<number | null>(readBoardId);
+  const [filters, setFilters] = useState<TaskFilters>(readTaskFilters);
   const [boardDetail, setBoardDetail] = useState<BoardDetail | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loadingBoards, setLoadingBoards] = useState(true);
   const [loadingTasks, setLoadingTasks] = useState(false);
+  const tasksRequestId = useRef(0);
   const [error, setError] = useState("");
   const [showBoardForm, setShowBoardForm] = useState(false);
   const [editingBoard, setEditingBoard] = useState<Board | null>(null);
@@ -200,7 +250,8 @@ export default function TasksPage() {
     }
   }
 
-  async function loadTasks(boardId: number | null) {
+  async function loadTasks(boardId: number | null, nextFilters = filters) {
+    const requestId = ++tasksRequestId.current;
     if (!boardId) {
       setTasks([]);
       setLoadingTasks(false);
@@ -208,11 +259,19 @@ export default function TasksPage() {
     }
     setLoadingTasks(true);
     try {
-      setTasks(await json<Task[]>(await authFetch(`/api/tasks?boardId=${boardId}`)));
+      const params = new URLSearchParams({ boardId: String(boardId) });
+      if (nextFilters.search.trim()) params.set("search", nextFilters.search.trim());
+      if (nextFilters.assignee) params.set("assignee", nextFilters.assignee);
+      if (nextFilters.priority) params.set("priority", nextFilters.priority);
+      if (nextFilters.due) params.set("due", nextFilters.due);
+      const nextTasks = await json<Task[]>(await authFetch(`/api/tasks?${params.toString()}`));
+      if (requestId === tasksRequestId.current) setTasks(nextTasks);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Não foi possível carregar as tarefas do quadro.");
+      if (requestId === tasksRequestId.current) {
+        setError(reason instanceof Error ? reason.message : "Não foi possível carregar as tarefas do quadro.");
+      }
     } finally {
-      setLoadingTasks(false);
+      if (requestId === tasksRequestId.current) setLoadingTasks(false);
     }
   }
 
@@ -233,9 +292,33 @@ export default function TasksPage() {
   }, [showArchived]);
 
   useEffect(() => {
-    void loadTasks(selectedBoardId);
+    void loadTasks(selectedBoardId, filters);
     void loadBoardDetail(selectedBoardId);
-  }, [selectedBoardId]);
+  }, [selectedBoardId, filters]);
+
+  useEffect(() => {
+    syncTaskUrl(selectedBoardId, filters);
+  }, [selectedBoardId, filters]);
+
+  function updateFilters(patch: Partial<TaskFilters>) {
+    const nextFilters = { ...filters, ...patch };
+    setFilters(nextFilters);
+    syncTaskUrl(selectedBoardId, nextFilters);
+  }
+
+  function clearFilters() {
+    setFilters(emptyTaskFilters);
+    syncTaskUrl(selectedBoardId, emptyTaskFilters);
+  }
+
+  const assigneeOptions = useMemo(() => {
+    const options = new Map<number, string>();
+    boardDetail?.members.forEach((member) => options.set(member.id, member.fullName));
+    tasks.forEach((task) => {
+      if (task.assigneeUserId && task.assigneeName) options.set(task.assigneeUserId, task.assigneeName);
+    });
+    return Array.from(options, ([id, name]) => ({ id, name })).sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+  }, [boardDetail?.members, tasks]);
 
   async function updateStatus(task: Task, status: string) {
     if (!can("tasks:update")) return;
@@ -319,7 +402,7 @@ export default function TasksPage() {
           <button onClick={() => setShowArchived(true)} className={`rounded-md px-2 py-2 text-[11px] font-extrabold transition ${showArchived ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`} data-testid="button-show-archived-boards">Arquivados</button>
         </div>
         {boards.length ? <div className="space-y-1" data-testid="board-list">
-          {boards.map((board) => <button key={board.id} onClick={() => setSelectedBoardId(board.id)} className={`w-full rounded-xl border p-3 text-left transition ${selectedBoardId === board.id ? "border-primary/40 bg-primary/5" : "border-transparent hover:border-border hover:bg-muted/60"}`} data-testid={`board-item-${board.id}`}>
+           {boards.map((board) => <button key={board.id} onClick={() => { setSelectedBoardId(board.id); syncTaskUrl(board.id, filters); }} className={`w-full rounded-xl border p-3 text-left transition ${selectedBoardId === board.id ? "border-primary/40 bg-primary/5" : "border-transparent hover:border-border hover:bg-muted/60"}`} data-testid={`board-item-${board.id}`}>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-extrabold" data-testid={`board-title-${board.id}`}>{board.title}</p>
@@ -347,6 +430,46 @@ export default function TasksPage() {
             {can("boards:archive") && <button onClick={() => void toggleBoardArchived(selectedBoard)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[11px] font-extrabold hover:bg-muted" data-testid={`button-toggle-board-${selectedBoard.id}`}>{selectedBoard.archived ? <RotateCcw size={13} /> : <Archive size={13} />}{selectedBoard.archived ? "Restaurar" : "Arquivar"}</button>}
           </div>
         </div> : <EmptyState title={showArchived ? "Escolha um quadro arquivado" : "Crie ou selecione um quadro"} detail={showArchived ? "Selecione um quadro para consultar suas tarefas." : "Os quadros separam a operação por cidade e região."} />}
+
+        {selectedBoard && <div className="mb-4 rounded-2xl border border-border bg-card p-4 shadow-sm" data-testid="task-filters">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="mono-label text-primary">Encontrar tarefa</p>
+              <p className="mt-1 text-xs text-muted-foreground">Combine os filtros para reduzir o quadro sem trocar de território.</p>
+            </div>
+            {(filters.search || filters.assignee || filters.priority || filters.due) && <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[11px] font-extrabold hover:bg-muted" data-testid="button-clear-task-filters"><X size={13} /> Limpar filtros</button>}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <label className="relative block sm:col-span-2 xl:col-span-1">
+              <span className="sr-only">Buscar tarefas</span>
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input value={filters.search} onChange={(event) => updateFilters({ search: event.target.value })} placeholder="Buscar por texto…" className="field pl-9" data-testid="input-task-search" />
+            </label>
+            <label>
+              <span className="sr-only">Responsável</span>
+              <select value={filters.assignee} onChange={(event) => updateFilters({ assignee: event.target.value })} className="field" data-testid="select-task-filter-assignee">
+                <option value="">Todos os responsáveis</option>
+                <option value="none">Sem responsável</option>
+                {assigneeOptions.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.name}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className="sr-only">Prioridade</span>
+              <select value={filters.priority} onChange={(event) => updateFilters({ priority: event.target.value })} className="field" data-testid="select-task-filter-priority">
+                <option value="">Todas as prioridades</option>
+                {Object.entries(priorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className="sr-only">Prazo</span>
+              <select value={filters.due} onChange={(event) => updateFilters({ due: event.target.value })} className="field" data-testid="select-task-filter-due">
+                <option value="">Todos os prazos</option>
+                {Object.entries(dueLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </label>
+          </div>
+          {(filters.search || filters.assignee || filters.priority || filters.due) && <p className="mt-3 text-[11px] font-bold text-muted-foreground" data-testid="task-filter-summary">{tasks.length} tarefa{tasks.length === 1 ? "" : "s"} encontrada{tasks.length === 1 ? "" : "s"}</p>}
+        </div>}
 
         {selectedBoard && <div className="grid gap-3 overflow-x-auto pb-2 md:grid-cols-2 xl:grid-cols-4">
           {columns.map((column) => {
