@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, gte, ilike, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import {
   authUsersTable,
   campaignBoardMembersTable,
@@ -8,6 +8,8 @@ import {
   campaignCalendarEventsTable,
   campaignCalendarSyncStateTable,
   campaignCalendarSharesTable,
+  campaignWhatsappShareBatchesTable,
+  campaignWhatsappShareMessagesTable,
   campaignEventAcknowledgementsTable,
   campaignTasksTable,
   campaignTaskActivityTable,
@@ -79,6 +81,107 @@ function normalizeWhatsAppPhone(value: unknown): string | null {
   const digits = value.replace(/\D/g, "");
   const normalized = digits.startsWith("55") ? digits : `55${digits}`;
   return /^55\d{10,11}$/.test(normalized) ? normalized : null;
+}
+
+type ShareRecipientKey = { type: "user" | "leadership"; id: number };
+
+function parseShareRecipients(value: unknown): ShareRecipientKey[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 100) return null;
+  const parsed = value.flatMap((item) => {
+    if (!record(item) || (item.type !== "user" && item.type !== "leadership")) return [];
+    const id = numberValue(item.id);
+    return id ? [{ type: item.type, id } as ShareRecipientKey] : [];
+  });
+  if (parsed.length !== value.length) return null;
+  return [...new Map(parsed.map((item) => [`${item.type}:${item.id}`, item])).values()];
+}
+
+function appUrl(req: Express.Request): string {
+  const request = req as unknown as { headers: Record<string, string | string[] | undefined> };
+  const forwardedHeader = request.headers["x-forwarded-proto"];
+  const forwardedHostHeader = request.headers["x-forwarded-host"];
+  const forwardedProto = (Array.isArray(forwardedHeader) ? forwardedHeader[0] : forwardedHeader)?.split(",")[0]?.trim();
+  const forwardedHost = Array.isArray(forwardedHostHeader) ? forwardedHostHeader[0] : forwardedHostHeader;
+  const hostHeader = forwardedHost?.split(",")[0]?.trim() || request.headers.host || "localhost";
+  return `${forwardedProto || "https"}://${hostHeader}`;
+}
+
+function formatShareDate(value: Date): string {
+  return value.toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+function recipientKey(recipient: { type: "user" | "leadership"; id: number }): string {
+  return `${recipient.type}:${recipient.id}`;
+}
+
+function weekBounds(weekStart: string): { start: Date; end: Date } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) return null;
+  const start = new Date(`${weekStart}T00:00:00-03:00`);
+  if (Number.isNaN(start.getTime())) return null;
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return { start, end };
+}
+
+async function calendarShareRecipients(
+  weekStart: string,
+  principal: NonNullable<Express.Request["auth"]>,
+) {
+  const bounds = weekBounds(weekStart);
+  if (!bounds) return [];
+  const eventCities = await db
+    .select({ cityId: campaignCalendarEventsTable.cityId })
+    .from(campaignCalendarEventsTable)
+    .innerJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId))
+    .where(and(
+      eq(campaignCalendarEventsTable.source, "google"),
+      gte(campaignCalendarEventsTable.startsAt, bounds.start),
+      lt(campaignCalendarEventsTable.startsAt, bounds.end),
+      cityScopeCondition(principal),
+    ));
+  const cityIds = [...new Set(eventCities.map((event) => event.cityId))];
+  if (!cityIds.length) return [];
+  const [users, leaderships] = await Promise.all([
+    db.select({
+      id: authUsersTable.id,
+      type: sql<"user">`'user'`,
+      name: authUsersTable.fullName,
+      role: authUsersTable.role,
+      phone: authUsersTable.phone,
+      email: authUsersTable.email,
+    }).from(authUsersTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, authUsersTable.cityId))
+      .where(and(
+        eq(authUsersTable.isActive, true),
+        inArray(authUsersTable.cityId, cityIds),
+        sql`${authUsersTable.phone} is not null`,
+        cityScopeCondition(principal),
+      ))
+      .orderBy(asc(authUsersTable.fullName)),
+    db.select({
+      id: leadershipsTable.id,
+      type: sql<"leadership">`'leadership'`,
+      name: leadershipsTable.name,
+      role: sql<string>`'LIDERANCA'`,
+      phone: leadershipsTable.leadershipContact,
+      email: sql<string>`null`,
+    }).from(leadershipsTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, leadershipsTable.cityId))
+      .where(and(
+        inArray(leadershipsTable.cityId, cityIds),
+        sql`${leadershipsTable.leadershipContact} is not null`,
+        cityScopeCondition(principal),
+      ))
+      .orderBy(asc(leadershipsTable.name)),
+  ]);
+  return [...users, ...leaderships].flatMap((recipient) => {
+    const phone = normalizeWhatsAppPhone(recipient.phone);
+    return phone ? [{ ...recipient, phone }] : [];
+  });
 }
 
 function taskScope(principal: NonNullable<Express.Request["auth"]>) {
@@ -841,16 +944,18 @@ router.get(
       .select({
         id: authUsersTable.id,
         name: authUsersTable.fullName,
+        type: sql<"user">`'user'`,
         role: authUsersTable.role,
         phone: authUsersTable.phone,
         email: authUsersTable.email,
       })
       .from(authUsersTable)
       .where(and(eq(authUsersTable.isActive, true), sql`${authUsersTable.phone} is not null`, task.cityId ? eq(authUsersTable.cityId, task.cityId) : sql`false`));
-  const campaignContacts = task.cityId && task.leadershipId
+    const campaignContacts = task.cityId && task.leadershipId
       ? await db.select({
           id: leadershipsTable.id,
           name: leadershipsTable.name,
+          type: sql<"leadership">`'leadership'`,
           phone: leadershipsTable.leadershipContact,
           role: sql<string>`'LIDERANCA'`,
           email: sql<string>`null`,
@@ -862,6 +967,129 @@ router.get(
         return phone ? [{ ...recipient, phone }] : [];
       }),
     );
+  },
+);
+
+router.get(
+  "/tasks/:id/share-preparations",
+  requirePermission("tasks:share"),
+  async (req, res): Promise<void> => {
+    const id = Number(req.params.id);
+    const task = Number.isInteger(id) ? await taskById(id, req.auth!) : undefined;
+    if (!task) {
+      res.status(404).json({ error: "Tarefa não encontrada." });
+      return;
+    }
+    const batches = await db
+      .select({
+        id: campaignWhatsappShareBatchesTable.id,
+        createdAt: campaignWhatsappShareBatchesTable.createdAt,
+        createdByName: authUsersTable.fullName,
+      })
+      .from(campaignWhatsappShareBatchesTable)
+      .innerJoin(authUsersTable, eq(authUsersTable.id, campaignWhatsappShareBatchesTable.createdByUserId))
+      .where(and(eq(campaignWhatsappShareBatchesTable.kind, "task"), eq(campaignWhatsappShareBatchesTable.taskId, id)))
+      .orderBy(desc(campaignWhatsappShareBatchesTable.createdAt))
+      .limit(20);
+    const history = await Promise.all(batches.map(async (batch) => ({
+      ...batch,
+      messages: await db.select({
+        id: campaignWhatsappShareMessagesTable.id,
+        recipientType: campaignWhatsappShareMessagesTable.recipientType,
+        recipientName: campaignWhatsappShareMessagesTable.recipientName,
+        phone: campaignWhatsappShareMessagesTable.phone,
+        message: campaignWhatsappShareMessagesTable.message,
+        whatsappUrl: campaignWhatsappShareMessagesTable.whatsappUrl,
+      }).from(campaignWhatsappShareMessagesTable)
+        .where(eq(campaignWhatsappShareMessagesTable.batchId, batch.id))
+        .orderBy(asc(campaignWhatsappShareMessagesTable.id)),
+    })));
+    res.json(history);
+  },
+);
+
+router.post(
+  "/tasks/:id/share-preparations",
+  requirePermission("tasks:share"),
+  async (req, res): Promise<void> => {
+    const id = Number(req.params.id);
+    const task = Number.isInteger(id) ? await taskById(id, req.auth!) : undefined;
+    const requested = record(req.body) ? parseShareRecipients(req.body.recipients) : null;
+    if (!task) {
+      res.status(404).json({ error: "Tarefa não encontrada." });
+      return;
+    }
+    if (!requested?.length) {
+      res.status(400).json({ error: "Selecione pelo menos um destinatário." });
+      return;
+    }
+    const available = await db
+      .select({
+        id: authUsersTable.id,
+        type: sql<"user">`'user'`,
+        name: authUsersTable.fullName,
+        phone: authUsersTable.phone,
+      })
+      .from(authUsersTable)
+      .where(and(
+        eq(authUsersTable.isActive, true),
+        sql`${authUsersTable.phone} is not null`,
+        task.cityId ? eq(authUsersTable.cityId, task.cityId) : sql`false`,
+        inArray(authUsersTable.id, requested.filter((item) => item.type === "user").map((item) => item.id).concat([-1])),
+      ));
+    const leaderships = task.cityId
+      ? await db.select({
+          id: leadershipsTable.id,
+          type: sql<"leadership">`'leadership'`,
+          name: leadershipsTable.name,
+          phone: leadershipsTable.leadershipContact,
+        }).from(leadershipsTable).where(and(
+          eq(leadershipsTable.id, task.leadershipId ?? -1),
+          sql`${leadershipsTable.leadershipContact} is not null`,
+          inArray(leadershipsTable.id, requested.filter((item) => item.type === "leadership").map((item) => item.id).concat([-1])),
+        ))
+      : [];
+    const candidates = [...available, ...leaderships].flatMap((item) => {
+      const phone = normalizeWhatsAppPhone(item.phone);
+      return phone ? [{ ...item, phone }] : [];
+    });
+    const candidateByKey = new Map(candidates.map((item) => [recipientKey({ type: item.type, id: item.id }), item]));
+    const selected = requested.map((item) => candidateByKey.get(recipientKey(item))).filter((item): item is NonNullable<typeof item> => Boolean(item));
+    if (selected.length !== requested.length) {
+      res.status(400).json({ error: "Um ou mais destinatários não estão mais disponíveis para esta tarefa." });
+      return;
+    }
+    const taskLink = `${appUrl(req)}/kanban?boardId=${task.boardId ?? ""}&taskId=${task.id}`;
+    const messages = selected.map((recipient) => {
+      const message = [
+        `EA 2026 — tarefa: ${task.title}`,
+        task.description ? `Detalhes: ${task.description}` : "",
+        task.cityName ? `Cidade: ${task.cityName}${task.regionName ? ` / ${task.regionName}` : ""}` : "",
+        task.leadershipName ? `Liderança: ${task.leadershipName}` : "",
+        task.dueAt ? `Prazo: ${formatShareDate(new Date(task.dueAt))}` : "",
+        `Status: ${task.status === "todo" ? "A fazer" : task.status === "in_progress" ? "Em andamento" : task.status === "blocked" ? "Bloqueada" : "Concluída"}`,
+        `Abrir tarefa: ${taskLink}`,
+      ].filter(Boolean).join("\n");
+      return {
+        recipientType: recipient.type,
+        recipientUserId: recipient.type === "user" ? recipient.id : null,
+        recipientLeadershipId: recipient.type === "leadership" ? recipient.id : null,
+        recipientName: recipient.name ?? "Destinatário",
+        phone: recipient.phone,
+        message,
+        whatsappUrl: `https://wa.me/${recipient.phone}?text=${encodeURIComponent(message)}`,
+      };
+    });
+    const [batch] = await db.insert(campaignWhatsappShareBatchesTable).values({
+      kind: "task",
+      taskId: task.id,
+      createdByUserId: req.auth!.user.id,
+    }).returning({ id: campaignWhatsappShareBatchesTable.id, createdAt: campaignWhatsappShareBatchesTable.createdAt });
+    await db.insert(campaignWhatsappShareMessagesTable).values(messages.map((message) => ({ ...message, batchId: batch.id })));
+    res.status(201).json({
+      batch: { ...batch, createdByName: req.auth!.user.fullName },
+      messages: messages.map((message, index) => ({ id: index + 1, ...message })),
+    });
   },
 );
 
@@ -928,11 +1156,145 @@ router.post(
       label: stringValue(req.body.label) ?? "Agenda semanal",
       createdByUserId: req.auth!.user.id,
     }).returning({
+      id: campaignCalendarSharesTable.id,
       token: campaignCalendarSharesTable.token,
       weekStart: campaignCalendarSharesTable.weekStart,
       label: campaignCalendarSharesTable.label,
     });
     res.status(201).json(share);
+  },
+);
+
+router.get(
+  "/calendar/share-recipients",
+  requirePermission("calendar:manage"),
+  async (req, res): Promise<void> => {
+    const weekStart = typeof req.query.weekStart === "string" ? req.query.weekStart : "";
+    if (!weekBounds(weekStart)) {
+      res.status(400).json({ error: "A semana da agenda é inválida." });
+      return;
+    }
+    res.json(await calendarShareRecipients(weekStart, req.auth!));
+  },
+);
+
+router.get(
+  "/calendar/share-history",
+  requirePermission("calendar:manage"),
+  async (req, res): Promise<void> => {
+    const weekStart = typeof req.query.weekStart === "string" ? req.query.weekStart : "";
+    if (!weekBounds(weekStart)) {
+      res.status(400).json({ error: "A semana da agenda é inválida." });
+      return;
+    }
+    const shares = await db
+      .select({
+        id: campaignWhatsappShareBatchesTable.id,
+        createdAt: campaignWhatsappShareBatchesTable.createdAt,
+        createdByName: authUsersTable.fullName,
+        shareToken: campaignCalendarSharesTable.token,
+        weekStart: campaignCalendarSharesTable.weekStart,
+      })
+      .from(campaignWhatsappShareBatchesTable)
+      .innerJoin(authUsersTable, eq(authUsersTable.id, campaignWhatsappShareBatchesTable.createdByUserId))
+      .innerJoin(campaignCalendarSharesTable, eq(campaignCalendarSharesTable.id, campaignWhatsappShareBatchesTable.calendarShareId))
+      .where(and(
+        eq(campaignWhatsappShareBatchesTable.kind, "calendar"),
+        eq(campaignCalendarSharesTable.weekStart, weekStart),
+        req.auth!.user.role === "ADMIN_GERAL"
+          ? undefined
+          : eq(campaignWhatsappShareBatchesTable.createdByUserId, req.auth!.user.id),
+      ))
+      .orderBy(desc(campaignWhatsappShareBatchesTable.createdAt))
+      .limit(20);
+    res.json(await Promise.all(shares.map(async (share) => ({
+      ...share,
+      messages: await db.select({
+        id: campaignWhatsappShareMessagesTable.id,
+        recipientType: campaignWhatsappShareMessagesTable.recipientType,
+        recipientName: campaignWhatsappShareMessagesTable.recipientName,
+        phone: campaignWhatsappShareMessagesTable.phone,
+        message: campaignWhatsappShareMessagesTable.message,
+        whatsappUrl: campaignWhatsappShareMessagesTable.whatsappUrl,
+      }).from(campaignWhatsappShareMessagesTable)
+        .where(eq(campaignWhatsappShareMessagesTable.batchId, share.id))
+        .orderBy(asc(campaignWhatsappShareMessagesTable.id)),
+    }))));
+  },
+);
+
+router.post(
+  "/calendar/shares/:id/share-preparations",
+  requirePermission("calendar:manage"),
+  async (req, res): Promise<void> => {
+    const shareId = Number(req.params.id);
+    const requested = record(req.body) ? parseShareRecipients(req.body.recipients) : null;
+    if (!Number.isInteger(shareId) || shareId <= 0 || !requested?.length) {
+      res.status(400).json({ error: "Agenda ou destinatários inválidos." });
+      return;
+    }
+    const [share] = await db.select({
+      id: campaignCalendarSharesTable.id,
+      token: campaignCalendarSharesTable.token,
+      weekStart: campaignCalendarSharesTable.weekStart,
+      label: campaignCalendarSharesTable.label,
+    }).from(campaignCalendarSharesTable).where(and(
+      eq(campaignCalendarSharesTable.id, shareId),
+      eq(campaignCalendarSharesTable.active, true),
+    ));
+    if (!share || !weekBounds(share.weekStart)) {
+      res.status(404).json({ error: "Link da agenda não encontrado." });
+      return;
+    }
+    const available = await calendarShareRecipients(share.weekStart, req.auth!);
+    const availableByKey = new Map(available.map((item) => [recipientKey({ type: item.type, id: item.id }), item]));
+    const selected = requested.map((item) => availableByKey.get(recipientKey(item))).filter((item): item is NonNullable<typeof item> => Boolean(item));
+    if (selected.length !== requested.length) {
+      res.status(400).json({ error: "Um ou mais destinatários não estão disponíveis para esta agenda." });
+      return;
+    }
+    const bounds = weekBounds(share.weekStart)!;
+    const events = await db.select({
+      title: campaignCalendarEventsTable.title,
+      startsAt: campaignCalendarEventsTable.startsAt,
+      cityName: citiesTable.name,
+    }).from(campaignCalendarEventsTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId))
+      .where(and(
+        eq(campaignCalendarEventsTable.source, "google"),
+        gte(campaignCalendarEventsTable.startsAt, bounds.start),
+        lt(campaignCalendarEventsTable.startsAt, bounds.end),
+        cityScopeCondition(req.auth!),
+      ))
+      .orderBy(asc(campaignCalendarEventsTable.startsAt));
+    const agendaLink = `${appUrl(req)}/agenda/compartilhada/${share.token}`;
+    const eventLines = events.slice(0, 20).map((event) => `• ${formatShareDate(new Date(event.startsAt))} — ${event.title} (${event.cityName})`);
+    const messages = selected.map((recipient) => {
+      const message = [
+        `EA 2026 — ${share.label}`,
+        eventLines.length ? eventLines.join("\n") : "Nenhum compromisso cadastrado para esta semana.",
+        `Abrir agenda completa: ${agendaLink}`,
+      ].join("\n");
+      return {
+        recipientType: recipient.type,
+        recipientUserId: recipient.type === "user" ? recipient.id : null,
+        recipientLeadershipId: recipient.type === "leadership" ? recipient.id : null,
+        recipientName: recipient.name ?? "Destinatário",
+        phone: recipient.phone,
+        message,
+        whatsappUrl: `https://wa.me/${recipient.phone}?text=${encodeURIComponent(message)}`,
+      };
+    });
+    const [batch] = await db.insert(campaignWhatsappShareBatchesTable).values({
+      kind: "calendar",
+      calendarShareId: share.id,
+      createdByUserId: req.auth!.user.id,
+    }).returning({ id: campaignWhatsappShareBatchesTable.id, createdAt: campaignWhatsappShareBatchesTable.createdAt });
+    await db.insert(campaignWhatsappShareMessagesTable).values(messages.map((message) => ({ ...message, batchId: batch.id })));
+    res.status(201).json({
+      batch: { ...batch, createdByName: req.auth!.user.fullName },
+      messages: messages.map((message, index) => ({ id: index + 1, ...message })),
+    });
   },
 );
 

@@ -100,6 +100,8 @@ type TaskDetail = Task & {
 };
 
 type Recipient = { id: number; name: string | null; role: string; phone: string | null; email: string | null };
+type ShareMessage = { id: number; recipientType: "user" | "leadership"; recipientName: string; phone: string; message: string; whatsappUrl: string };
+type ShareHistory = { id: number; createdAt: string; createdByName: string; messages: ShareMessage[] };
 
 type MemberOption = Member;
 
@@ -155,6 +157,11 @@ function readBoardId(): number | null {
   return Number.isInteger(value) && value > 0 ? value : null;
 }
 
+function readTaskId(): number | null {
+  const value = Number(new URLSearchParams(window.location.search).get("taskId"));
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
 function syncTaskUrl(boardId: number | null, filters: TaskFilters): void {
   const params = new URLSearchParams(window.location.search);
   if (boardId) params.set("boardId", String(boardId));
@@ -204,6 +211,16 @@ function whatsappUrl(phone: string, task: Task): string | null {
     `Status: ${statusLabels[task.status] ?? task.status}`,
   ].filter(Boolean).join("\n");
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
+}
+
+function shareRecipientKey(recipient: Pick<Recipient, "id"> & { type: "user" | "leadership" }): string {
+  return `${recipient.type}:${recipient.id}`;
+}
+
+function parseShareRecipientKey(value: string): { type: "user" | "leadership"; id: number } | null {
+  const [type, rawId] = value.split(":");
+  const id = Number(rawId);
+  return (type === "user" || type === "leadership") && Number.isInteger(id) && id > 0 ? { type, id } : null;
 }
 
 function priorityTone(priority: string): "neutral" | "warning" | "success" | "danger" {
@@ -265,7 +282,11 @@ export default function TasksPage() {
       if (nextFilters.priority) params.set("priority", nextFilters.priority);
       if (nextFilters.due) params.set("due", nextFilters.due);
       const nextTasks = await json<Task[]>(await authFetch(`/api/tasks?${params.toString()}`));
-      if (requestId === tasksRequestId.current) setTasks(nextTasks);
+      if (requestId === tasksRequestId.current) {
+        setTasks(nextTasks);
+        const deepLinkedTaskId = readTaskId();
+        if (deepLinkedTaskId && nextTasks.some((task) => task.id === deepLinkedTaskId)) setSelectedTaskId(deepLinkedTaskId);
+      }
     } catch (reason) {
       if (requestId === tasksRequestId.current) {
         setError(reason instanceof Error ? reason.message : "Não foi possível carregar as tarefas do quadro.");
@@ -689,23 +710,72 @@ function TaskDetailDialog({ taskId, boards, onClose, onChanged, onShare }: { tas
 }
 
 function ShareTaskDialog({ task, onClose }: { task: Task; onClose: () => void }) {
-  const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [recipients, setRecipients] = useState<Array<Recipient & { type: "user" | "leadership" }>>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [history, setHistory] = useState<ShareHistory[]>([]);
+  const [prepared, setPrepared] = useState<ShareMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    void (async () => {
-      try {
-        setRecipients(await json<Recipient[]>(await authFetch(`/api/tasks/${task.id}/recipients`)));
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "Não foi possível carregar os destinatários.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [task.id]);
-  return <ModalShell title="Enviar tarefa" eyebrow="Compartilhamento manual" onClose={onClose}>
-    <p className="mb-5 text-xs leading-5 text-muted-foreground">O WhatsApp abre no aparelho da pessoa com a mensagem preenchida. O envio só acontece quando ela confirma no aplicativo.</p>
-    {loading ? <LoadingRows count={2} /> : error ? <ErrorState label={error} onRetry={() => window.location.reload()} /> : recipients.length ? <div className="space-y-2" data-testid="recipient-list">{recipients.map((recipient) => { const link = recipient.phone ? whatsappUrl(recipient.phone, task) : null; return <div key={`${recipient.role}-${recipient.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-border p-3" data-testid={`recipient-${recipient.id}`}><div className="min-w-0"><p className="truncate text-xs font-extrabold">{recipient.name}</p><p className="text-[10px] text-muted-foreground">{recipient.role.replaceAll("_", " ")} · {recipient.phone}</p></div>{link && <a href={link} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-extrabold text-white" data-testid={`link-whatsapp-${recipient.id}`}><MessageCircle size={13} /> WhatsApp</a>}</div>; })}</div> : <div className="rounded-xl bg-muted p-4 text-xs text-muted-foreground" data-testid="empty-recipients">Nenhum contato com telefone foi encontrado dentro do território da tarefa.</div>}
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const [nextRecipients, nextHistory] = await Promise.all([
+        json<Array<Recipient & { type: "user" | "leadership" }>>(await authFetch(`/api/tasks/${task.id}/recipients`)),
+        json<ShareHistory[]>(await authFetch(`/api/tasks/${task.id}/share-preparations`)),
+      ]);
+      setRecipients(nextRecipients);
+      setSelected(nextRecipients.map(shareRecipientKey));
+      setHistory(nextHistory);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível carregar os destinatários.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { void load(); }, [task.id]);
+
+  function toggleRecipient(key: string) {
+    setSelected((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+  }
+
+  async function prepareMessages() {
+    const parsed = selected.map(parseShareRecipientKey).filter((item): item is NonNullable<typeof item> => Boolean(item));
+    if (!parsed.length) return;
+    setPreparing(true);
+    setError("");
+    try {
+      const response = await json<{ messages: ShareMessage[] }>(await authFetch(`/api/tasks/${task.id}/share-preparations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipients: parsed }),
+      }));
+      setPrepared(response.messages);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível preparar as mensagens.");
+    } finally {
+      setPreparing(false);
+    }
+  }
+
+  return <ModalShell title="Enviar tarefa" eyebrow="Compartilhamento manual" onClose={onClose} wide>
+    <p className="mb-5 text-xs leading-5 text-muted-foreground">Selecione os destinatários. O sistema registra a preparação e abre uma mensagem individual por pessoa; o envio só acontece quando você confirma no WhatsApp.</p>
+    {error && <p className="mb-4 rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive" data-testid="share-task-error">{error}</p>}
+    {loading ? <LoadingRows count={3} /> : recipients.length ? <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.8fr)]">
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-3"><div><p className="mono-label text-primary">Destinatários</p><p className="mt-1 text-xs text-muted-foreground">{selected.length} de {recipients.length} selecionados</p></div><button onClick={() => setSelected(selected.length === recipients.length ? [] : recipients.map(shareRecipientKey))} className="text-[11px] font-extrabold text-primary">{selected.length === recipients.length ? "Desmarcar todos" : "Selecionar todos"}</button></div>
+        <div className="space-y-2" data-testid="recipient-list">{recipients.map((recipient) => { const key = shareRecipientKey(recipient); return <label key={key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-border p-3 hover:bg-muted/50" data-testid={`recipient-${recipient.type}-${recipient.id}`}><input type="checkbox" checked={selected.includes(key)} onChange={() => toggleRecipient(key)} className="h-4 w-4 accent-primary" /><div className="min-w-0"><p className="truncate text-xs font-extrabold">{recipient.name}</p><p className="text-[10px] text-muted-foreground">{recipient.role.replaceAll("_", " ")} · {recipient.phone}</p></div></label>; })}</div>
+        <button onClick={() => void prepareMessages()} disabled={preparing || !selected.length} className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 text-xs font-extrabold text-white disabled:opacity-50" data-testid="button-prepare-task-share"><Send size={14} /> {preparing ? "Preparando mensagens…" : `Preparar ${selected.length} mensagem${selected.length === 1 ? "" : "s"}`}</button>
+      </div>
+      <div className="space-y-4">
+        {prepared.length > 0 && <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="mono-label text-emerald-800">Mensagens preparadas</p><p className="mt-1 text-xs leading-5 text-emerald-900">Abra cada conversa e confirme o envio no WhatsApp.</p><div className="mt-3 space-y-2">{prepared.map((message) => <div key={message.id} className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-white p-2.5"><span className="truncate text-xs font-bold">{message.recipientName}</span><a href={message.whatsappUrl} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-extrabold text-white" data-testid={`link-prepared-whatsapp-${message.id}`}><MessageCircle size={13} /> Abrir</a></div>)}</div></section>}
+        <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-3 flex items-center gap-2"><History size={16} className="text-primary" /><div><p className="mono-label text-primary">Histórico de preparações</p><p className="mt-1 text-[11px] text-muted-foreground">Quem iniciou e para quem a mensagem foi preparada.</p></div></div>{history.length ? <div className="space-y-3">{history.map((batch) => <div key={batch.id} className="rounded-lg border border-border p-3"><p className="text-[11px] font-extrabold">{batch.createdByName}</p><p className="mt-1 text-[10px] text-muted-foreground">{formatDate(batch.createdAt)} · {batch.messages.length} destinatário{batch.messages.length === 1 ? "" : "s"}</p><div className="mt-2 flex flex-wrap gap-1">{batch.messages.map((message) => <span key={message.id} className="rounded-full bg-muted px-2 py-1 text-[10px] font-bold">{message.recipientName}</span>)}</div></div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Nenhuma preparação registrada.</p>}</section>
+      </div>
+    </div> : <div className="rounded-xl bg-muted p-4 text-xs text-muted-foreground" data-testid="empty-recipients">Nenhum contato com telefone foi encontrado dentro do território da tarefa.</div>}
     <button onClick={onClose} className="mt-5 flex h-10 w-full items-center justify-center rounded-lg border border-border text-xs font-extrabold hover:bg-muted" data-testid="button-close-share">Fechar</button>
   </ModalShell>;
 }

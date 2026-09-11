@@ -193,6 +193,41 @@ export const campaignCalendarSharesTable = pgTable(
   ],
 );
 
+export const campaignWhatsappShareBatchesTable = pgTable(
+  "campaign_whatsapp_share_batches",
+  {
+    id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    kind: text("kind").notNull(),
+    taskId: integer("task_id").references(() => campaignTasksTable.id, { onDelete: "set null" }),
+    calendarShareId: integer("calendar_share_id").references(() => campaignCalendarSharesTable.id, { onDelete: "set null" }),
+    createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("campaign_whatsapp_batches_task_idx").on(table.taskId, table.createdAt),
+    index("campaign_whatsapp_batches_calendar_idx").on(table.calendarShareId, table.createdAt),
+  ],
+);
+
+export const campaignWhatsappShareMessagesTable = pgTable(
+  "campaign_whatsapp_share_messages",
+  {
+    id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    batchId: integer("batch_id").notNull().references(() => campaignWhatsappShareBatchesTable.id, { onDelete: "cascade" }),
+    recipientType: text("recipient_type").notNull(),
+    recipientUserId: integer("recipient_user_id").references(() => authUsersTable.id, { onDelete: "set null" }),
+    recipientLeadershipId: integer("recipient_leadership_id").references(() => leadershipsTable.id, { onDelete: "set null" }),
+    recipientName: text("recipient_name").notNull(),
+    phone: text("phone").notNull(),
+    message: text("message").notNull(),
+    whatsappUrl: text("whatsapp_url").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("campaign_whatsapp_messages_batch_idx").on(table.batchId),
+  ],
+);
+
 export const insertTaskSchema = z.object({
   title: z.string().min(2),
   description: z.string().nullable().optional(),
@@ -226,3 +261,5 @@ export type CampaignTaskComment = typeof campaignTaskCommentsTable.$inferSelect;
 export type CampaignTaskActivity = typeof campaignTaskActivityTable.$inferSelect;
 export type CampaignCalendarEvent = typeof campaignCalendarEventsTable.$inferSelect;
 export type CampaignCalendarShare = typeof campaignCalendarSharesTable.$inferSelect;
+export type CampaignWhatsappShareBatch = typeof campaignWhatsappShareBatchesTable.$inferSelect;
+export type CampaignWhatsappShareMessage = typeof campaignWhatsappShareMessagesTable.$inferSelect;
