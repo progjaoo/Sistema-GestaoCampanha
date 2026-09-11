@@ -16,6 +16,7 @@ import TasksPage from '@/pages/tasks';
 import AgendaPage from '@/pages/agenda';
 import ProfilePage from '@/pages/profile';
 import SharedAgendaPage from '@/pages/shared-agenda';
+import SheetsPage from '@/pages/sheets';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import {
   Route,
@@ -41,6 +42,7 @@ function Router() {
         <Route path="/acessos" component={AccessControlPage} />
         <Route path="/kanban" component={TasksPage} />
         <Route path="/agenda" component={AgendaPage} />
+        <Route path="/planilha" component={SheetsPage} />
         <Route path="/perfil" component={ProfilePage} />
         <Route component={NotFound} />
       </Switch>

@@ -325,6 +325,10 @@
     @apply font-sans antialiased bg-background text-foreground;
     min-width: 320px;
   }
+
+  :where(button:not(:disabled), a, [role="button"], summary) {
+    cursor: pointer;
+  }
 }
 
 @layer utilities {

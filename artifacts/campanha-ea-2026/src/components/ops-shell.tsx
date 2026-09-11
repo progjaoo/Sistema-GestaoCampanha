@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { BarChart3, CalendarDays, ChevronRight, ClipboardCheck, Handshake, KanbanSquare, Map, Menu, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
+import { BarChart3, CalendarDays, ChevronRight, ClipboardCheck, FileSpreadsheet, Handshake, KanbanSquare, Map, Menu, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/lib/auth';
 
@@ -12,6 +12,7 @@ const navItems = [
   { href: '/acessos', label: 'Acessos', icon: ShieldCheck, permission: 'rbac:manage' },
   { href: '/kanban', label: 'Kanban', icon: KanbanSquare, permission: 'tasks:view' },
   { href: '/agenda', label: 'Agenda', icon: CalendarDays, permission: 'calendar:view' },
+  { href: '/planilha', label: 'Planilha', icon: FileSpreadsheet, permission: 'sheets:view' },
 ];
 
 export function OpsShell({ children }: { children: ReactNode }) {

@@ -157,6 +157,12 @@ export const PERMISSION_DEFINITIONS = [
     description: "Confirmar que um aviso de evento foi recebido.",
     category: "Agenda",
   },
+  {
+    key: "sheets:view",
+    label: "Consultar planilha",
+    description: "Ler e cruzar a planilha oficial da campanha sem editá-la.",
+    category: "Integrações",
+  },
 ] as const;
 
 const DEFAULT_ROLE_PERMISSIONS: Record<AuthRole, string[]> = {
@@ -174,6 +180,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<AuthRole, string[]> = {
     "tasks:update",
     "tasks:share",
     "calendar:view",
+    "sheets:view",
   ],
   COORDENADOR: [
     "dashboard:view",
@@ -189,6 +196,7 @@ const DEFAULT_ROLE_PERMISSIONS: Record<AuthRole, string[]> = {
     "tasks:delete",
     "tasks:share",
     "calendar:view",
+    "sheets:view",
   ],
   LIDERANCA: [
     "dashboard:view",
