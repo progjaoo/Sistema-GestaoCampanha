@@ -40,6 +40,13 @@ function dateValue(value: unknown): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function normalizeWhatsAppPhone(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const digits = value.replace(/\D/g, "");
+  const normalized = digits.startsWith("55") ? digits : `55${digits}`;
+  return /^55\d{10,11}$/.test(normalized) ? normalized : null;
+}
+
 function taskScope(principal: NonNullable<Express.Request["auth"]>) {
   return cityScopeCondition(principal);
 }
@@ -238,7 +245,12 @@ router.get(
           email: sql<string>`null`,
         }).from(leadershipsTable).where(and(eq(leadershipsTable.cityId, task.cityId), sql`${leadershipsTable.leadershipContact} is not null`))
       : [];
-    res.json([...rows, ...campaignContacts]);
+    res.json(
+      [...rows, ...campaignContacts].flatMap((recipient) => {
+        const phone = normalizeWhatsAppPhone(recipient.phone);
+        return phone ? [{ ...recipient, phone }] : [];
+      }),
+    );
   },
 );
 
@@ -289,6 +301,14 @@ router.post(
     const [city] = await db.select({ id: citiesTable.id, name: citiesTable.name }).from(citiesTable).where(eq(citiesTable.id, cityId));
     if (!city) {
       res.status(400).json({ error: "Cidade não encontrada." });
+      return;
+    }
+    const [allowedCity] = await db
+      .select({ id: citiesTable.id })
+      .from(citiesTable)
+      .where(and(eq(citiesTable.id, cityId), cityScopeCondition(req.auth!)));
+    if (!allowedCity) {
+      res.status(403).json({ error: "O território está fora do seu escopo." });
       return;
     }
     const googleResponse = await googleCalendarRequest("/calendar/v3/calendars/primary/events?sendUpdates=all", {
@@ -346,6 +366,11 @@ router.post(
       return;
     }
     const payload = await response.json() as { items?: Array<Record<string, unknown>> };
+    const visibleCities = await db
+      .select({ id: citiesTable.id })
+      .from(citiesTable)
+      .where(cityScopeCondition(req.auth!));
+    const visibleCityIds = new Set(visibleCities.map((city) => city.id));
     let imported = 0;
     for (const event of payload.items ?? []) {
       if (event.status === "cancelled" || typeof event.id !== "string") continue;
@@ -353,7 +378,7 @@ router.post(
       const cityId = numberValue(privateProps.eaCityId);
       const start = record(event.start) && typeof event.start.dateTime === "string" ? dateValue(event.start.dateTime) : null;
       const end = record(event.end) && typeof event.end.dateTime === "string" ? dateValue(event.end.dateTime) : null;
-      if (!cityId || !start || !end || typeof event.summary !== "string") continue;
+      if (!cityId || !visibleCityIds.has(cityId) || !start || !end || typeof event.summary !== "string") continue;
       await db.insert(campaignCalendarEventsTable).values({
         googleCalendarId: "primary",
         googleEventId: event.id,

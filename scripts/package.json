@@ -6,6 +6,7 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "seed:campaign": "tsx ./src/seed-campaign.ts",
+    "test:api": "tsx ../artifacts/api-server/test/api.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
