@@ -15,6 +15,7 @@ export const regionsTable = pgTable(
   {
     id: integer("id").primaryKey(),
     name: text("name").notNull(),
+    contact: text("contact"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -31,6 +32,7 @@ export const citiesTable = pgTable(
   {
     id: integer("id").primaryKey(),
     name: text("name").notNull(),
+    contact: text("contact"),
     regionId: integer("region_id")
       .notNull()
       .references(() => regionsTable.id),

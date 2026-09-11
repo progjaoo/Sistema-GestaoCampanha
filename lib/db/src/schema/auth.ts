@@ -18,6 +18,7 @@ export const authUsersTable = pgTable(
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
     fullName: text("full_name").notNull(),
+    phone: text("phone"),
     role: text("role").notNull(),
     regionId: integer("region_id").references(() => regionsTable.id),
     cityId: integer("city_id").references(() => citiesTable.id),
