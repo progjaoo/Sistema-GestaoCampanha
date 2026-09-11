@@ -11,7 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { z } from "zod/v4";
 import { authUsersTable } from "./auth";
-import { citiesTable, leadershipsTable } from "./campaign";
+import { citiesTable, leadershipsTable, regionsTable } from "./campaign";
 
 export const campaignTasksTable = pgTable(
   "campaign_tasks",
@@ -184,6 +184,9 @@ export const campaignCalendarSharesTable = pgTable(
     label: text("label").notNull().default("Agenda semanal"),
     weekStart: date("week_start", { mode: "string" }).notNull(),
     active: boolean("active").notNull().default(true),
+    scopeType: text("scope_type").notNull().default("none"),
+    scopeRegionId: integer("scope_region_id").references(() => regionsTable.id),
+    scopeCityId: integer("scope_city_id").references(() => citiesTable.id),
     createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

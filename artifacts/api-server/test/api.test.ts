@@ -5,8 +5,11 @@ import { after, before, test } from "node:test";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import app from "../src/app";
 import {
+  authPermissionsTable,
+  authRolePermissionsTable,
   authUsersTable,
   campaignCalendarEventsTable,
+  campaignCalendarSharesTable,
   campaignEventAcknowledgementsTable,
   campaignTasksTable,
   citiesTable,
@@ -31,6 +34,7 @@ let baseUrl = "";
 let fixtureUsers: FixtureUser[] = [];
 let fixtureTaskIds: number[] = [];
 let fixtureEventIds: number[] = [];
+let fixtureShareIds: number[] = [];
 let updatedLeadershipId = 0;
 let originalLeadershipName: string | null = null;
 const calendarCalls: Array<{ path: string; init?: { method?: string; body?: unknown } }> = [];
@@ -213,6 +217,11 @@ after(async () => {
       .delete(campaignCalendarEventsTable)
       .where(inArray(campaignCalendarEventsTable.id, fixtureEventIds));
   }
+  if (fixtureShareIds.length) {
+    await db
+      .delete(campaignCalendarSharesTable)
+      .where(inArray(campaignCalendarSharesTable.id, fixtureShareIds));
+  }
   if (fixtureTaskIds.length) {
     await db
       .delete(campaignTasksTable)
@@ -341,6 +350,7 @@ test("confirma RBAC, agenda, aviso, compartilhamento e escopo operacional", asyn
       title: "Tarefa dentro do escopo",
       description: "Compartilhar instruções",
       cityId: coordinator.cityId,
+      leadershipId: updatedLeadershipId,
     }),
   });
   assert.equal(createdTask.status, 201);
@@ -378,4 +388,68 @@ test("confirma RBAC, agenda, aviso, compartilhamento e escopo operacional", asyn
       .filter((recipient: { id: number }) => recipient.id === coordinator.id)
       .every((recipient: { phone: string }) => recipient.phone === "5524999990000"),
   );
+
+  const [calendarManagePermission] = await db
+    .select({ id: authPermissionsTable.id })
+    .from(authPermissionsTable)
+    .where(eq(authPermissionsTable.key, "calendar:manage"));
+  assert.ok(calendarManagePermission);
+  const [existingCoordinatorPermission] = await db
+    .select({ permissionId: authRolePermissionsTable.permissionId })
+    .from(authRolePermissionsTable)
+    .where(and(
+      eq(authRolePermissionsTable.role, "COORDENADOR"),
+      eq(authRolePermissionsTable.permissionId, calendarManagePermission.id),
+    ));
+  await db.insert(authRolePermissionsTable).values({
+    role: "COORDENADOR",
+    permissionId: calendarManagePermission.id,
+  }).onConflictDoNothing();
+  try {
+    const adminShare = await request("/api/calendar/shares", admin, {
+      method: "POST",
+      body: JSON.stringify({ weekStart: "2029-12-31", label: "Agenda nacional" }),
+    });
+    assert.equal(adminShare.status, 201);
+    fixtureShareIds.push(adminShare.body.id);
+
+    const coordinatorShare = await request("/api/calendar/shares", coordinator, {
+      method: "POST",
+      body: JSON.stringify({ weekStart: "2029-12-31", label: "Agenda municipal" }),
+    });
+    assert.equal(coordinatorShare.status, 201);
+    fixtureShareIds.push(coordinatorShare.body.id);
+
+    const crossUserPreparation = await request(
+      `/api/calendar/shares/${adminShare.body.id}/share-preparations`,
+      coordinator,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          recipients: [{ type: "user", id: coordinator.id }],
+        }),
+      },
+    );
+    assert.equal(crossUserPreparation.status, 404);
+
+    const publicResponse = await fetch(
+      `${baseUrl}/api/calendar/shared/${coordinatorShare.body.token}`,
+    );
+    assert.equal(publicResponse.status, 200);
+    const publicBody = await publicResponse.json() as {
+      events: Array<{ id: number }>;
+    };
+    assert.ok(publicBody.events.some((event) => event.id === createdEvent.body.id));
+    assert.ok(publicBody.events.some((event) => event.id === syncRow.id));
+    assert.ok(publicBody.events.every((event) => event.id !== outsideSyncRow.id));
+  } finally {
+    if (!existingCoordinatorPermission) {
+      await db
+        .delete(authRolePermissionsTable)
+        .where(and(
+          eq(authRolePermissionsTable.role, "COORDENADOR"),
+          eq(authRolePermissionsTable.permissionId, calendarManagePermission.id),
+        ));
+    }
+  }
 });

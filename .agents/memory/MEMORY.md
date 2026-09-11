@@ -3,3 +3,4 @@
 - [API codegen body names](api-codegen-body-names.md) — inline OpenAPI request bodies can collide with Orval Zod type exports; prefer reusable component schemas.
 - [Personal WhatsApp sharing](personal-whatsapp-sharing.md) — personal-number delivery stays user-confirmed through a prefilled wa.me link, never unofficial automation.
 - [Campaign responsive UI](campaign-responsive-ui.md) — keep Planilha as a true spreadsheet grid and preserve compact, labeled navigation across desktop and mobile.
+- [Public agenda scope](public-agenda-scope.md) — weekly public links snapshot territorial scope and non-admin users may prepare only links they created.

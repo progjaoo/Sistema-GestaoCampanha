@@ -188,6 +188,34 @@ function taskScope(principal: NonNullable<Express.Request["auth"]>) {
   return cityScopeCondition(principal);
 }
 
+function calendarShareScope(principal: NonNullable<Express.Request["auth"]>) {
+  if (principal.user.role === "ADMIN_GERAL") {
+    return { scopeType: "all", scopeRegionId: null, scopeCityId: null };
+  }
+  if (principal.user.role === "ARTICULADOR" && principal.user.regionId) {
+    return { scopeType: "region", scopeRegionId: principal.user.regionId, scopeCityId: null };
+  }
+  if (principal.user.cityId) {
+    return { scopeType: "city", scopeRegionId: null, scopeCityId: principal.user.cityId };
+  }
+  return { scopeType: "none", scopeRegionId: null, scopeCityId: null };
+}
+
+function calendarShareScopeCondition(share: {
+  scopeType: string;
+  scopeRegionId: number | null;
+  scopeCityId: number | null;
+}) {
+  if (share.scopeType === "all") return undefined;
+  if (share.scopeType === "region" && share.scopeRegionId) {
+    return eq(citiesTable.regionId, share.scopeRegionId);
+  }
+  if (share.scopeType === "city" && share.scopeCityId) {
+    return eq(citiesTable.id, share.scopeCityId);
+  }
+  return sql`false`;
+}
+
 async function taskById(id: number, principal: NonNullable<Express.Request["auth"]>) {
   const [task] = await db
     .select({
@@ -1080,12 +1108,15 @@ router.post(
         whatsappUrl: `https://wa.me/${recipient.phone}?text=${encodeURIComponent(message)}`,
       };
     });
-    const [batch] = await db.insert(campaignWhatsappShareBatchesTable).values({
-      kind: "task",
-      taskId: task.id,
-      createdByUserId: req.auth!.user.id,
-    }).returning({ id: campaignWhatsappShareBatchesTable.id, createdAt: campaignWhatsappShareBatchesTable.createdAt });
-    await db.insert(campaignWhatsappShareMessagesTable).values(messages.map((message) => ({ ...message, batchId: batch.id })));
+    const batch = await db.transaction(async (tx) => {
+      const [createdBatch] = await tx.insert(campaignWhatsappShareBatchesTable).values({
+        kind: "task",
+        taskId: task.id,
+        createdByUserId: req.auth!.user.id,
+      }).returning({ id: campaignWhatsappShareBatchesTable.id, createdAt: campaignWhatsappShareBatchesTable.createdAt });
+      await tx.insert(campaignWhatsappShareMessagesTable).values(messages.map((message) => ({ ...message, batchId: createdBatch.id })));
+      return createdBatch;
+    });
     res.status(201).json({
       batch: { ...batch, createdByName: req.auth!.user.fullName },
       messages: messages.map((message, index) => ({ id: index + 1, ...message })),
@@ -1150,10 +1181,12 @@ router.post(
       return;
     }
     const token = randomBytes(24).toString("base64url");
+    const shareScope = calendarShareScope(req.auth!);
     const [share] = await db.insert(campaignCalendarSharesTable).values({
       token,
       weekStart: req.body.weekStart,
       label: stringValue(req.body.label) ?? "Agenda semanal",
+      ...shareScope,
       createdByUserId: req.auth!.user.id,
     }).returning({
       id: campaignCalendarSharesTable.id,
@@ -1238,9 +1271,15 @@ router.post(
       token: campaignCalendarSharesTable.token,
       weekStart: campaignCalendarSharesTable.weekStart,
       label: campaignCalendarSharesTable.label,
+      scopeType: campaignCalendarSharesTable.scopeType,
+      scopeRegionId: campaignCalendarSharesTable.scopeRegionId,
+      scopeCityId: campaignCalendarSharesTable.scopeCityId,
     }).from(campaignCalendarSharesTable).where(and(
       eq(campaignCalendarSharesTable.id, shareId),
       eq(campaignCalendarSharesTable.active, true),
+      req.auth!.user.role === "ADMIN_GERAL"
+        ? undefined
+        : eq(campaignCalendarSharesTable.createdByUserId, req.auth!.user.id),
     ));
     if (!share || !weekBounds(share.weekStart)) {
       res.status(404).json({ error: "Link da agenda não encontrado." });
@@ -1264,7 +1303,7 @@ router.post(
         eq(campaignCalendarEventsTable.source, "google"),
         gte(campaignCalendarEventsTable.startsAt, bounds.start),
         lt(campaignCalendarEventsTable.startsAt, bounds.end),
-        cityScopeCondition(req.auth!),
+        calendarShareScopeCondition(share),
       ))
       .orderBy(asc(campaignCalendarEventsTable.startsAt));
     const agendaLink = `${appUrl(req)}/agenda/compartilhada/${share.token}`;
@@ -1285,12 +1324,15 @@ router.post(
         whatsappUrl: `https://wa.me/${recipient.phone}?text=${encodeURIComponent(message)}`,
       };
     });
-    const [batch] = await db.insert(campaignWhatsappShareBatchesTable).values({
-      kind: "calendar",
-      calendarShareId: share.id,
-      createdByUserId: req.auth!.user.id,
-    }).returning({ id: campaignWhatsappShareBatchesTable.id, createdAt: campaignWhatsappShareBatchesTable.createdAt });
-    await db.insert(campaignWhatsappShareMessagesTable).values(messages.map((message) => ({ ...message, batchId: batch.id })));
+    const batch = await db.transaction(async (tx) => {
+      const [createdBatch] = await tx.insert(campaignWhatsappShareBatchesTable).values({
+        kind: "calendar",
+        calendarShareId: share.id,
+        createdByUserId: req.auth!.user.id,
+      }).returning({ id: campaignWhatsappShareBatchesTable.id, createdAt: campaignWhatsappShareBatchesTable.createdAt });
+      await tx.insert(campaignWhatsappShareMessagesTable).values(messages.map((message) => ({ ...message, batchId: createdBatch.id })));
+      return createdBatch;
+    });
     res.status(201).json({
       batch: { ...batch, createdByName: req.auth!.user.fullName },
       messages: messages.map((message, index) => ({ id: index + 1, ...message })),
@@ -1486,6 +1528,9 @@ publicOperationsRouter.get("/calendar/shared/:token", async (req, res): Promise<
     token: campaignCalendarSharesTable.token,
     weekStart: campaignCalendarSharesTable.weekStart,
     label: campaignCalendarSharesTable.label,
+    scopeType: campaignCalendarSharesTable.scopeType,
+    scopeRegionId: campaignCalendarSharesTable.scopeRegionId,
+    scopeCityId: campaignCalendarSharesTable.scopeCityId,
   }).from(campaignCalendarSharesTable).where(and(
     eq(campaignCalendarSharesTable.token, token),
     eq(campaignCalendarSharesTable.active, true),
@@ -1513,6 +1558,7 @@ publicOperationsRouter.get("/calendar/shared/:token", async (req, res): Promise<
       eq(campaignCalendarEventsTable.source, "google"),
       sql`${campaignCalendarEventsTable.startsAt} >= ${weekStart}`,
       sql`${campaignCalendarEventsTable.startsAt} < ${weekEnd}`,
+      calendarShareScopeCondition(share),
     ))
     .orderBy(asc(campaignCalendarEventsTable.startsAt));
   res.json({ share, events });
