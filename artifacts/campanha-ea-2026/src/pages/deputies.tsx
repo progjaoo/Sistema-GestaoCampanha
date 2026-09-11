@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Handshake, MapPin, Search, UsersRound } from 'lucide-react';
 import { Link } from 'wouter';
 import { useListCities, useListFederalDeputies, useListLeaderships } from '@workspace/api-client-react';
@@ -12,6 +12,7 @@ export default function DeputiesPage() {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'city' | 'name' | 'status'>('city');
   const [page, setPage] = useState(1);
+  const detailsRef = useRef<HTMLElement>(null);
   const activeId = selectedId ?? allianceDeputies[0]?.id;
   const activeDeputy = allianceDeputies.find((deputy) => deputy.id === activeId);
   const cities = useListCities({ federalDeputyId: activeId });
@@ -30,6 +31,11 @@ export default function DeputiesPage() {
 
   const sortedDeputies = useMemo(() => [...allianceDeputies].sort((a, b) => b.leadershipCount - a.leadershipCount), [allianceDeputies]);
 
+  useEffect(() => {
+    if (selectedId === undefined) return;
+    detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [selectedId]);
+
   if (deputies.isLoading) return <OpsShell><PageHeading eyebrow="Apoio federal / dobrados" title="Dobrados" description="Cada deputado federal com o recorte de cidades e lideranças que o apoiam." /><LoadingRows count={4} /></OpsShell>;
   if (deputies.isError) return <OpsShell><PageHeading eyebrow="Apoio federal / dobrados" title="Dobrados" description="Cada deputado federal com o recorte de cidades e lideranças que o apoiam." /><ErrorState onRetry={() => void deputies.refetch()} /></OpsShell>;
 
@@ -42,7 +48,7 @@ export default function DeputiesPage() {
         <p className={`mt-1 text-xs ${deputy.id === activeId ? 'text-primary-foreground/65' : 'text-muted-foreground'}`}>{deputy.leadershipCount} dobradas cadastradas</p>
       </button>)}
     </div>
-    <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_30px_hsl(193_30%_15%_/.03)]">
+    <section ref={detailsRef} className="scroll-mt-24 overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_30px_hsl(193_30%_15%_/.03)]" data-testid="deputy-details">
       <div className="border-b border-border p-4 sm:p-5">
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div><p className="mono-label text-primary">Aba / {activeDeputy?.name ?? 'dobrado'}</p><h2 className="mt-1 text-lg font-extrabold">{activeDeputy?.name ?? 'Selecione um deputado'}</h2><p className="mt-1 text-xs text-muted-foreground">{activeDeputy?.leadershipCount ?? 0} relações em {activeDeputy?.cityCount ?? 0} cidades</p></div>
