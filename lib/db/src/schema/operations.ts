@@ -26,7 +26,7 @@ export const campaignTasksTable = pgTable(
     cityId: integer("city_id").references(() => citiesTable.id),
     leadershipId: integer("leadership_id").references(() => leadershipsTable.id),
     assigneeUserId: integer("assignee_user_id").references(() => authUsersTable.id),
-    createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id, { onDelete: "cascade" }),
+    createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
