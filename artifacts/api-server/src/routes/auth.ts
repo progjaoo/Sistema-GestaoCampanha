@@ -39,6 +39,7 @@ type CreateUserInput = {
   cityId?: number | null;
   leadershipId?: number | null;
   canCreateLeaderUsers?: boolean;
+  phone?: string | null;
 };
 
 type UpdateUserInput = {
@@ -50,6 +51,7 @@ type UpdateUserInput = {
   isActive?: boolean;
   canCreateLeaderUsers?: boolean;
   password?: string;
+  phone?: string | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -82,6 +84,7 @@ function parseCreateUserBody(value: unknown): CreateUserInput | null {
     cityId: optionalNumber(value.cityId),
     leadershipId: optionalNumber(value.leadershipId),
     canCreateLeaderUsers: typeof value.canCreateLeaderUsers === "boolean" ? value.canCreateLeaderUsers : undefined,
+    phone: typeof value.phone === "string" ? value.phone.trim() || null : value.phone === null ? null : undefined,
   };
 }
 
@@ -100,6 +103,26 @@ function parseUpdateUserBody(value: unknown): UpdateUserInput | null {
     leadershipId: optionalNumber(value.leadershipId),
     isActive: typeof value.isActive === "boolean" ? value.isActive : undefined,
     canCreateLeaderUsers: typeof value.canCreateLeaderUsers === "boolean" ? value.canCreateLeaderUsers : undefined,
+    password: typeof value.password === "string" ? value.password : undefined,
+    phone: typeof value.phone === "string" ? value.phone.trim() || null : value.phone === null ? null : undefined,
+  };
+}
+
+function parseProfileBody(value: unknown): {
+  fullName?: string;
+  email?: string;
+  phone?: string | null;
+  password?: string;
+} | null {
+  if (!isRecord(value)) return null;
+  if (value.fullName !== undefined && (typeof value.fullName !== "string" || value.fullName.trim().length < 2)) return null;
+  if (value.email !== undefined && !isEmail(value.email)) return null;
+  if (value.phone !== undefined && value.phone !== null && typeof value.phone !== "string") return null;
+  if (value.password !== undefined && (typeof value.password !== "string" || value.password.length < 8)) return null;
+  return {
+    fullName: typeof value.fullName === "string" ? value.fullName.trim() : undefined,
+    email: typeof value.email === "string" ? value.email.trim().toLowerCase() : undefined,
+    phone: typeof value.phone === "string" ? value.phone.trim() || null : value.phone === null ? null : undefined,
     password: typeof value.password === "string" ? value.password : undefined,
   };
 }
@@ -145,6 +168,41 @@ router.get("/auth/me", requireAuth, async (req, res): Promise<void> => {
     return;
   }
   res.json({ user: publicUser(principal.user, principal.permissions) });
+});
+
+router.patch("/auth/me", requireAuth, async (req, res): Promise<void> => {
+  const body = parseProfileBody(req.body);
+  if (!body || !req.auth) {
+    res.status(400).json({ error: "Dados de perfil inválidos." });
+    return;
+  }
+  if (body.email && body.email !== req.auth.user.email) {
+    const [existing] = await db
+      .select({ id: authUsersTable.id })
+      .from(authUsersTable)
+      .where(eq(authUsersTable.email, body.email));
+    if (existing && existing.id !== req.auth.user.id) {
+      res.status(409).json({ error: "Já existe um usuário com este e-mail." });
+      return;
+    }
+  }
+  const updates = {
+    ...(body.fullName !== undefined ? { fullName: body.fullName } : {}),
+    ...(body.email !== undefined ? { email: body.email } : {}),
+    ...(body.phone !== undefined ? { phone: body.phone } : {}),
+    ...(body.password ? { passwordHash: await hashPassword(body.password) } : {}),
+    updatedAt: new Date(),
+  };
+  const [updated] = await db.update(authUsersTable)
+    .set(updates)
+    .where(eq(authUsersTable.id, req.auth.user.id))
+    .returning();
+  if (!updated) {
+    res.status(404).json({ error: "Usuário não encontrado." });
+    return;
+  }
+  const permissions = await getPermissionsForRole(updated.role);
+  res.json({ user: publicUser(updated, permissions) });
 });
 
 router.post("/auth/logout", requireAuth, async (_req, res): Promise<void> => {
@@ -246,6 +304,7 @@ router.get(
         leadershipId: authUsersTable.leadershipId,
         isActive: authUsersTable.isActive,
         canCreateLeaderUsers: authUsersTable.canCreateLeaderUsers,
+         phone: authUsersTable.phone,
         lastLoginAt: authUsersTable.lastLoginAt,
         createdAt: authUsersTable.createdAt,
       })
@@ -330,6 +389,7 @@ router.post(
         cityId,
         leadershipId: parsed.role === "LIDERANCA" ? leadershipId : null,
         canCreateLeaderUsers: isAdmin ? parsed.canCreateLeaderUsers ?? false : false,
+        phone: parsed.phone ?? null,
       })
       .returning();
     const permissions = await getPermissionsForRole(created.role);

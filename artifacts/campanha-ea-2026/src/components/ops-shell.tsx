@@ -84,8 +84,9 @@ export function OpsShell({ children }: { children: ReactNode }) {
             <Link href="/liderancas" className="hidden items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground sm:flex" data-testid="link-quick-search">
               <Search size={14} /> Busca rápida
             </Link>
-            <div className="hidden text-right sm:block"><p className="text-xs font-extrabold">{user?.fullName}</p><p className="mono-label text-muted-foreground">{user?.role.replaceAll('_', ' ')}</p></div>
-            <button onClick={() => void logout()} className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-extrabold text-primary-foreground transition hover:opacity-80" title="Sair" aria-label="Sair do sistema" data-testid="button-logout">{user?.fullName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</button>
+            <Link href="/perfil" className="hidden text-right sm:block hover:opacity-75"><p className="text-xs font-extrabold">{user?.fullName}</p><p className="mono-label text-muted-foreground">{user?.role.replaceAll('_', ' ')}</p></Link>
+            <Link href="/perfil" className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-extrabold text-primary-foreground transition hover:opacity-80" title="Meu perfil" aria-label="Meu perfil" data-testid="link-profile">{user?.fullName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</Link>
+            <button onClick={() => void logout()} className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-xs font-extrabold text-primary transition hover:bg-muted" title="Sair" aria-label="Sair do sistema" data-testid="button-logout">×</button>
           </div>
         </header>
         <main className="mx-auto max-w-[1440px] px-4 pb-24 pt-7 sm:px-7 lg:px-10 lg:pb-10">{children}</main>

@@ -363,32 +363,44 @@ export async function ensureAuthBootstrap(): Promise<void> {
     }
   }
 
-  const adminEmail = (
-    process.env.ADMIN_GENERAL_EMAIL ?? "leonardosallesgtf@gmail.com"
-  ).trim().toLowerCase();
-  const adminPassword = process.env.ADMIN_GENERAL_PASSWORD;
-  if (!adminPassword) {
+  const bootstrapAdmins = [
+    {
+      email: (process.env.ADMIN_GENERAL_EMAIL ?? "leonardosallesgtf@gmail.com").trim().toLowerCase(),
+      password: process.env.ADMIN_GENERAL_PASSWORD,
+      fullName: "Administrador geral",
+    },
+    {
+      email: "canellaesantos@gmail.com",
+      password: process.env.ADMIN_SECONDARY_PASSWORD,
+      fullName: "Canella Santos",
+    },
+  ];
+  const configuredAdmins = bootstrapAdmins.filter(
+    (admin): admin is typeof admin & { password: string } => Boolean(admin.password),
+  );
+  if (!configuredAdmins.length) {
     logger.warn(
-      { email: adminEmail },
-      "ADMIN_GENERAL_PASSWORD is not configured; admin bootstrap skipped",
+      "No administrator bootstrap secret is configured; admin bootstrap skipped",
     );
     return;
   }
 
-  const [existingAdmin] = await db
-    .select({ id: authUsersTable.id })
-    .from(authUsersTable)
-    .where(eq(authUsersTable.email, adminEmail));
-  if (!existingAdmin) {
-    await db.insert(authUsersTable).values({
-      email: adminEmail,
-      passwordHash: await hashPassword(adminPassword),
-      fullName: "Administrador geral",
-      role: "ADMIN_GERAL",
-      isActive: true,
-      canCreateLeaderUsers: true,
-    });
-    logger.info({ email: adminEmail }, "General admin user provisioned");
+  for (const admin of configuredAdmins) {
+    const [existingAdmin] = await db
+      .select({ id: authUsersTable.id })
+      .from(authUsersTable)
+      .where(eq(authUsersTable.email, admin.email));
+    if (!existingAdmin) {
+      await db.insert(authUsersTable).values({
+        email: admin.email,
+        passwordHash: await hashPassword(admin.password),
+        fullName: admin.fullName,
+        role: "ADMIN_GERAL",
+        isActive: true,
+        canCreateLeaderUsers: true,
+      });
+      logger.info({ email: admin.email }, "Administrator user provisioned");
+    }
   }
 }
 
@@ -405,6 +417,7 @@ export function publicUser(
   leadershipId: number | null;
   isActive: boolean;
   canCreateLeaderUsers: boolean;
+  phone: string | null;
   permissions: string[];
 } {
   return {
@@ -417,6 +430,7 @@ export function publicUser(
     leadershipId: user.leadershipId,
     isActive: user.isActive,
     canCreateLeaderUsers: user.canCreateLeaderUsers,
+    phone: user.phone,
     permissions,
   };
 }

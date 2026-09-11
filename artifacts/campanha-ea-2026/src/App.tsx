@@ -14,6 +14,7 @@ import LoginPage from '@/pages/login';
 import AccessControlPage from '@/pages/access-control';
 import TasksPage from '@/pages/tasks';
 import AgendaPage from '@/pages/agenda';
+import ProfilePage from '@/pages/profile';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import {
   Route,
@@ -39,6 +40,7 @@ function Router() {
         <Route path="/acessos" component={AccessControlPage} />
         <Route path="/kanban" component={TasksPage} />
         <Route path="/agenda" component={AgendaPage} />
+        <Route path="/perfil" component={ProfilePage} />
         <Route component={NotFound} />
       </Switch>
     </RoutedErrorBoundary>

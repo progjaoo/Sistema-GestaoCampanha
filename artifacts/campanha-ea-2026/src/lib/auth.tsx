@@ -21,6 +21,7 @@ export type AuthUser = {
   leadershipId: number | null;
   isActive: boolean;
   canCreateLeaderUsers: boolean;
+  phone: string | null;
   permissions: string[];
 };
 
@@ -31,6 +32,7 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   can: (permission: string) => boolean;
+  updateUser: (user: AuthUser) => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -114,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     logout,
     can: (permission: string) => Boolean(user?.permissions.includes(permission)),
+    updateUser: (nextUser: AuthUser) => setUser(nextUser),
   }), [isLoading, login, logout, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
