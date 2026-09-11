@@ -58,8 +58,10 @@ export const ListRegionsResponse = zod.array(ListRegionsResponseItem)
 
 
 
+
 export const ListCitiesQueryParams = zod.object({
-  "regionId": zod.coerce.number().int().min(1).optional()
+  "regionId": zod.coerce.number().int().min(1).optional(),
+  "federalDeputyId": zod.coerce.number().int().min(1).optional()
 })
 
 export const ListCitiesResponseItem = zod.object({
@@ -67,7 +69,8 @@ export const ListCitiesResponseItem = zod.object({
   "name": zod.string(),
   "regionId": zod.number().int(),
   "regionName": zod.string(),
-  "leadershipCount": zod.number().int()
+  "leadershipCount": zod.number().int(),
+  "deputyCount": zod.number().int()
 })
 export const ListCitiesResponse = zod.array(ListCitiesResponseItem)
 
@@ -77,7 +80,10 @@ export const ListCitiesResponse = zod.array(ListCitiesResponseItem)
  */
 
 
+
 export const listLeadershipsQueryReviewOnlyDefault = false;
+export const listLeadershipsQuerySortByDefault = `name`;
+export const listLeadershipsQuerySortDirectionDefault = `asc`;
 export const listLeadershipsQueryPageDefault = 1;
 
 export const listLeadershipsQueryPageSizeDefault = 25;
@@ -88,8 +94,11 @@ export const listLeadershipsQueryPageSizeMax = 100;
 export const ListLeadershipsQueryParams = zod.object({
   "regionId": zod.coerce.number().int().min(1).optional(),
   "cityId": zod.coerce.number().int().min(1).optional(),
+  "federalDeputyId": zod.coerce.number().int().min(1).optional(),
   "search": zod.coerce.string().optional(),
   "reviewOnly": zod.coerce.boolean().default(listLeadershipsQueryReviewOnlyDefault),
+  "sortBy": zod.enum(['name', 'city', 'region', 'deputy', 'status']).default(listLeadershipsQuerySortByDefault),
+  "sortDirection": zod.enum(['asc', 'desc']).default(listLeadershipsQuerySortDirectionDefault),
   "page": zod.coerce.number().int().min(1).default(listLeadershipsQueryPageDefault),
   "pageSize": zod.coerce.number().int().min(1).max(listLeadershipsQueryPageSizeMax).default(listLeadershipsQueryPageSizeDefault)
 })
@@ -122,6 +131,19 @@ export const ListLeadershipsResponse = zod.object({
   "page": zod.number().int(),
   "pageSize": zod.number().int()
 })
+
+
+/**
+ * @summary List federal deputies with dynamic support totals
+ */
+export const ListFederalDeputiesResponseItem = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "isAlliance": zod.boolean(),
+  "leadershipCount": zod.number().int(),
+  "cityCount": zod.number().int()
+})
+export const ListFederalDeputiesResponse = zod.array(ListFederalDeputiesResponseItem)
 
 
 /**

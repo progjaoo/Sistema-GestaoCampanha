@@ -23,6 +23,7 @@ import type {
   CampaignOverview,
   City,
   Error,
+  FederalDeputy,
   HealthStatus,
   Leadership,
   LeadershipInput,
@@ -462,12 +463,89 @@ export function useListLeaderships<TData = Awaited<ReturnType<typeof listLeaders
 
 
 
+export const getListFederalDeputiesUrl = () => {
+
+
+
+
+  return `/api/deputies`
+}
+
+/**
+ * @summary List federal deputies with dynamic support totals
+ */
+export const listFederalDeputies = async ( options?: Parameters<typeof customFetch>[1]): Promise<FederalDeputy[]> => {
+
+  return customFetch<FederalDeputy[]>(getListFederalDeputiesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListFederalDeputiesQueryKey = () => {
+    return [
+    `/api/deputies`
+    ] as const;
+    }
+
+
+export const getListFederalDeputiesQueryOptions = <TData = Awaited<ReturnType<typeof listFederalDeputies>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFederalDeputies>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListFederalDeputiesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listFederalDeputies>>> = ({ signal }) => listFederalDeputies({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listFederalDeputies>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListFederalDeputiesQueryResult = NonNullable<Awaited<ReturnType<typeof listFederalDeputies>>>
+export type ListFederalDeputiesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List federal deputies with dynamic support totals
+ */
+
+export function useListFederalDeputies<TData = Awaited<ReturnType<typeof listFederalDeputies>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listFederalDeputies>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListFederalDeputiesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getCreateLeadershipUrl = () => {
 
 
 
 
-  return `/api/leaderships`
+  return `/api/deputies`
 }
 
 /**

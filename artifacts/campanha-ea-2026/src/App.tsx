@@ -9,6 +9,7 @@ import LeadershipsPage from '@/pages/leaderships';
 import LeadershipDetailPage from '@/pages/leadership-detail';
 import ReviewPage from '@/pages/review';
 import CoveragePage from '@/pages/coverage';
+import DeputiesPage from '@/pages/deputies';
 import {
   Route,
   Switch,
@@ -26,6 +27,7 @@ function Router() {
       <Switch>
         <Route path="/" component={OverviewPage} />
         <Route path="/cobertura" component={CoveragePage} />
+        <Route path="/dobrados" component={DeputiesPage} />
         <Route path="/liderancas" component={LeadershipsPage} />
         <Route path="/liderancas/:id" component={LeadershipDetailPage} />
         <Route path="/revisao" component={ReviewPage} />

@@ -12,4 +12,5 @@ export interface City {
   regionId: number;
   regionName: string;
   leadershipCount: number;
+  deputyCount: number;
 }

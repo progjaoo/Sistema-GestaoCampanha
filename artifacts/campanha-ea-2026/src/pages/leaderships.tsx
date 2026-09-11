@@ -1,24 +1,30 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { ChevronLeft, ChevronRight, Filter, Plus, Search, X } from 'lucide-react';
 import { Link } from 'wouter';
-import { useCreateLeadership, useListCities, useListLeaderships } from '@workspace/api-client-react';
+import { useCreateLeadership, useListCities, useListFederalDeputies, useListLeaderships } from '@workspace/api-client-react';
 import { EmptyState, ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from '@/components/ops-shell';
 
 export default function LeadershipsPage() {
   const [search, setSearch] = useState('');
   const [cityId, setCityId] = useState<number | undefined>();
+  const [federalDeputyId, setFederalDeputyId] = useState<number | undefined>();
+  const [sortBy, setSortBy] = useState<'name' | 'city' | 'deputy' | 'status'>('name');
   const [reviewOnly, setReviewOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
   const params = useMemo(() => ({
     search: search || undefined,
     cityId,
+    federalDeputyId,
     reviewOnly: reviewOnly || undefined,
+    sortBy,
+    sortDirection: sortBy === 'status' ? ('desc' as const) : ('asc' as const),
     page,
     pageSize: 12,
   }), [search, cityId, reviewOnly, page]);
   const query = useListLeaderships(params);
   const cities = useListCities();
+  const deputies = useListFederalDeputies();
   const create = useCreateLeadership();
   const records = query.data?.items ?? [];
   const total = query.data?.total ?? 0;
@@ -52,6 +58,7 @@ export default function LeadershipsPage() {
   const clearFilters = () => {
     setSearch('');
     setCityId(undefined);
+    setFederalDeputyId(undefined);
     setReviewOnly(false);
     setPage(1);
   };
@@ -73,8 +80,18 @@ export default function LeadershipsPage() {
           <option value="">Todas as cidades</option>
           {(cities.data ?? []).map((city) => <option key={city.id} value={city.id}>{city.name}</option>)}
         </select>
+        <select value={federalDeputyId ?? ''} onChange={(event) => { setFederalDeputyId(event.target.value ? Number(event.target.value) : undefined); setPage(1); }} className="h-11 rounded-lg border border-input bg-background px-3 text-xs font-bold text-muted-foreground outline-none focus:ring-2 focus:ring-ring lg:w-48" aria-label="Filtrar por deputado dobrado" data-testid="select-filter-deputy">
+          <option value="">Todos os dobrados</option>
+          {(deputies.data ?? []).filter((deputy) => deputy.isAlliance).map((deputy) => <option key={deputy.id} value={deputy.id}>{deputy.name}</option>)}
+        </select>
+        <select value={sortBy} onChange={(event) => { setSortBy(event.target.value as typeof sortBy); setPage(1); }} className="h-11 rounded-lg border border-input bg-background px-3 text-xs font-bold text-muted-foreground outline-none focus:ring-2 focus:ring-ring lg:w-48" aria-label="Ordenar pessoas" data-testid="select-sort-people">
+          <option value="name">Pessoa A–Z</option>
+          <option value="city">Cidade A–Z</option>
+          <option value="deputy">Dobrado A–Z</option>
+          <option value="status">Pendências primeiro</option>
+        </select>
         <button onClick={() => { setReviewOnly(!reviewOnly); setPage(1); }} className={`inline-flex h-11 items-center justify-center gap-2 rounded-lg border px-4 text-xs font-extrabold transition-colors ${reviewOnly ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-input text-muted-foreground hover:text-foreground'}`} data-testid="button-filter-review"><Filter size={15} /> {reviewOnly ? 'Em revisão' : 'Todos os papéis'}</button>
-        {(search || cityId || reviewOnly) && <button onClick={clearFilters} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-muted-foreground hover:text-foreground" data-testid="button-clear-filters"><X size={14} /> Limpar</button>}
+        {(search || cityId || federalDeputyId || reviewOnly || sortBy !== 'name') && <button onClick={clearFilters} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-muted-foreground hover:text-foreground" data-testid="button-clear-filters"><X size={14} /> Limpar</button>}
       </div>
     </div>
     {query.isLoading ? <LoadingRows /> : query.isError ? <ErrorState onRetry={() => void query.refetch()} /> : <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_30px_hsl(193_30%_15%_/.03)]" data-testid="leadership-table-section">

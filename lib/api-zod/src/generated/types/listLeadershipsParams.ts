@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CityIdParameter } from './cityIdParameter';
+import type { FederalDeputyIdParameter } from './federalDeputyIdParameter';
+import type { ListLeadershipsSortBy } from './listLeadershipsSortBy';
+import type { ListLeadershipsSortDirection } from './listLeadershipsSortDirection';
 import type { RegionIdParameter } from './regionIdParameter';
 
 export type ListLeadershipsParams = {
@@ -17,8 +20,14 @@ regionId?: RegionIdParameter;
  * @minimum 1
  */
 cityId?: CityIdParameter;
+/**
+ * @minimum 1
+ */
+federalDeputyId?: FederalDeputyIdParameter;
 search?: string;
 reviewOnly?: boolean;
+sortBy?: ListLeadershipsSortBy;
+sortDirection?: ListLeadershipsSortDirection;
 /**
  * @minimum 1
  */

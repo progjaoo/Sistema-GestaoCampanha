@@ -1,1 +1,2 @@
 - [Campaign import data quality](campaign-import-data-quality.md) — preserve incomplete/ambiguous rows and require explicit review decisions.
+- [Campaign deputy tabs](campaign-deputy-tabs.md) — treat federal deputy tabs as derived views; city records are canonical.

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { FederalDeputyIdParameter } from './federalDeputyIdParameter';
 import type { RegionIdParameter } from './regionIdParameter';
 
 export type ListCitiesParams = {
@@ -12,4 +13,8 @@ export type ListCitiesParams = {
  * @minimum 1
  */
 regionId?: RegionIdParameter;
+/**
+ * @minimum 1
+ */
+federalDeputyId?: FederalDeputyIdParameter;
 };

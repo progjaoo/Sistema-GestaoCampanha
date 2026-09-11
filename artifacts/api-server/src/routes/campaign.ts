@@ -26,6 +26,7 @@ import {
   GetLeadershipResponse,
   ListCitiesQueryParams,
   ListCitiesResponse,
+  ListFederalDeputiesResponse,
   ListLeadershipsQueryParams,
   ListLeadershipsResponse,
   ListRegionsResponse,
@@ -98,6 +99,7 @@ router.get("/campaign/overview", async (_req, res): Promise<void> => {
       .select({
         cityId: leadershipsTable.cityId,
         federalDeputyName: federalDeputiesTable.canonicalName,
+        isAlliance: federalDeputiesTable.isAlliance,
         needsReview: leadershipsTable.needsReview,
       })
       .from(leadershipsTable)
@@ -118,7 +120,7 @@ router.get("/campaign/overview", async (_req, res): Promise<void> => {
 
   const deputyCounts = new Map<string, number>();
   for (const leadership of leaderships) {
-    if (leadership.federalDeputyName) {
+    if (leadership.federalDeputyName && leadership.isAlliance) {
       deputyCounts.set(
         leadership.federalDeputyName,
         (deputyCounts.get(leadership.federalDeputyName) ?? 0) + 1,
@@ -169,9 +171,12 @@ router.get("/cities", async (req, res): Promise<void> => {
     return;
   }
 
-  const filters = query.data.regionId
-    ? eq(citiesTable.regionId, query.data.regionId)
-    : undefined;
+  const filters = and(
+    query.data.regionId ? eq(citiesTable.regionId, query.data.regionId) : undefined,
+    query.data.federalDeputyId
+      ? eq(leadershipsTable.federalDeputyId, query.data.federalDeputyId)
+      : undefined,
+  );
   const cities = await db
     .select({
       id: citiesTable.id,
@@ -179,6 +184,7 @@ router.get("/cities", async (req, res): Promise<void> => {
       regionId: regionsTable.id,
       regionName: regionsTable.name,
       leadershipCount: sql<number>`count(${leadershipsTable.id})::int`,
+      deputyCount: sql<number>`count(distinct ${leadershipsTable.federalDeputyId})::int`,
     })
     .from(citiesTable)
     .innerJoin(regionsTable, eq(regionsTable.id, citiesTable.regionId))
@@ -188,6 +194,26 @@ router.get("/cities", async (req, res): Promise<void> => {
     .orderBy(asc(citiesTable.name));
 
   res.json(ListCitiesResponse.parse(cities));
+});
+
+router.get("/deputies", async (_req, res): Promise<void> => {
+  const deputies = await db
+    .select({
+      id: federalDeputiesTable.id,
+      name: federalDeputiesTable.canonicalName,
+      isAlliance: federalDeputiesTable.isAlliance,
+      leadershipCount: sql<number>`count(${leadershipsTable.id})::int`,
+      cityCount: sql<number>`count(distinct ${leadershipsTable.cityId})::int`,
+    })
+    .from(federalDeputiesTable)
+    .leftJoin(
+      leadershipsTable,
+      eq(leadershipsTable.federalDeputyId, federalDeputiesTable.id),
+    )
+    .groupBy(federalDeputiesTable.id)
+    .orderBy(desc(federalDeputiesTable.isAlliance), desc(sql`count(${leadershipsTable.id})`), asc(federalDeputiesTable.canonicalName));
+
+  res.json(ListFederalDeputiesResponse.parse(deputies));
 });
 
 router.get("/leaderships", async (req, res): Promise<void> => {
@@ -200,6 +226,9 @@ router.get("/leaderships", async (req, res): Promise<void> => {
   const conditions = [];
   if (query.data.regionId) conditions.push(eq(regionsTable.id, query.data.regionId));
   if (query.data.cityId) conditions.push(eq(citiesTable.id, query.data.cityId));
+  if (query.data.federalDeputyId) {
+    conditions.push(eq(leadershipsTable.federalDeputyId, query.data.federalDeputyId));
+  }
   if (query.data.reviewOnly) conditions.push(eq(leadershipsTable.needsReview, true));
   if (query.data.search) {
     const pattern = `%${query.data.search}%`;
@@ -215,6 +244,16 @@ router.get("/leaderships", async (req, res): Promise<void> => {
   }
 
   const where = conditions.length ? and(...conditions) : undefined;
+  const sortColumns = {
+    name: leadershipsTable.name,
+    city: citiesTable.name,
+    region: regionsTable.name,
+    deputy: federalDeputiesTable.canonicalName,
+    status: leadershipsTable.needsReview,
+  } as const;
+  const sortColumn = sortColumns[query.data.sortBy ?? "name"];
+  const sortOrder =
+    query.data.sortDirection === "desc" ? desc(sortColumn) : asc(sortColumn);
   const [items, [{ total }]] = await Promise.all([
     db
       .select(leadershipSelection)
@@ -234,7 +273,7 @@ router.get("/leaderships", async (req, res): Promise<void> => {
         eq(federalDeputiesTable.id, leadershipsTable.federalDeputyId),
       )
       .where(where)
-      .orderBy(desc(leadershipsTable.needsReview), asc(leadershipsTable.name))
+      .orderBy(sortOrder)
       .limit(query.data.pageSize)
       .offset((query.data.page - 1) * query.data.pageSize),
     db

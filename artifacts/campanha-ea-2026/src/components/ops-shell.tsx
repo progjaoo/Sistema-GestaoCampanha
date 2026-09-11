@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react';
-import { BarChart3, ChevronRight, ClipboardCheck, Map, Menu, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
+import { BarChart3, ChevronRight, ClipboardCheck, Handshake, Map, Menu, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 
 const navItems = [
   { href: '/', label: 'Visão geral', icon: BarChart3 },
   { href: '/cobertura', label: 'Cobertura', icon: Map },
+  { href: '/dobrados', label: 'Dobrados', icon: Handshake },
   { href: '/liderancas', label: 'Pessoas', icon: UsersRound },
   { href: '/revisao', label: 'Revisão', icon: ClipboardCheck },
 ];
@@ -66,7 +67,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
               <ShieldCheck size={16} className="text-primary" />
               <span>Operações de campo</span>
               <span className="text-border">/</span>
-              <span className="font-semibold text-foreground">{location === '/' ? 'Resumo da campanha' : location.startsWith('/cobertura') ? 'Cobertura territorial' : location.startsWith('/revisao') ? 'Fila de revisão' : 'Cadastro de pessoas'}</span>
+              <span className="font-semibold text-foreground">{location === '/' ? 'Resumo da campanha' : location.startsWith('/cobertura') ? 'Cobertura territorial' : location.startsWith('/dobrados') ? 'Apoio federal' : location.startsWith('/revisao') ? 'Fila de revisão' : 'Cadastro de pessoas'}</span>
             </div>
             <div className="sm:hidden">
               <div className="text-sm font-extrabold">EA 2026</div>

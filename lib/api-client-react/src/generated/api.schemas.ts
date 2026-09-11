@@ -26,12 +26,15 @@ export interface City {
   regionId: number;
   regionName: string;
   leadershipCount: number;
+  deputyCount: number;
 }
 
 export interface FederalDeputy {
   id: number;
   name: string;
   isAlliance: boolean;
+  leadershipCount: number;
+  cityCount: number;
 }
 
 export interface Leadership {
@@ -176,11 +179,17 @@ export type RegionIdParameter = number;
 
 export type CityIdParameter = number;
 
+export type FederalDeputyIdParameter = number;
+
 export type ListCitiesParams = {
 /**
  * @minimum 1
  */
 regionId?: RegionIdParameter;
+/**
+ * @minimum 1
+ */
+federalDeputyId?: FederalDeputyIdParameter;
 };
 
 export type ListLeadershipsParams = {
@@ -192,8 +201,14 @@ regionId?: RegionIdParameter;
  * @minimum 1
  */
 cityId?: CityIdParameter;
+/**
+ * @minimum 1
+ */
+federalDeputyId?: FederalDeputyIdParameter;
 search?: string;
 reviewOnly?: boolean;
+sortBy?: ListLeadershipsSortBy;
+sortDirection?: ListLeadershipsSortDirection;
 /**
  * @minimum 1
  */
@@ -204,6 +219,25 @@ page?: number;
  */
 pageSize?: number;
 };
+
+export type ListLeadershipsSortBy = typeof ListLeadershipsSortBy[keyof typeof ListLeadershipsSortBy];
+
+
+export const ListLeadershipsSortBy = {
+  name: 'name',
+  city: 'city',
+  region: 'region',
+  deputy: 'deputy',
+  status: 'status',
+} as const;
+
+export type ListLeadershipsSortDirection = typeof ListLeadershipsSortDirection[keyof typeof ListLeadershipsSortDirection];
+
+
+export const ListLeadershipsSortDirection = {
+  asc: 'asc',
+  desc: 'desc',
+} as const;
 
 export type ListReviewIssuesParams = {
 status?: ListReviewIssuesStatus;

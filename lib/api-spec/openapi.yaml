@@ -63,6 +63,7 @@ paths:
       summary: List cities, optionally filtered by region
       parameters:
         - $ref: "#/components/parameters/RegionId"
+        - $ref: "#/components/parameters/FederalDeputyId"
       responses:
         "200":
           description: City list
@@ -80,6 +81,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RegionId"
         - $ref: "#/components/parameters/CityId"
+        - $ref: "#/components/parameters/FederalDeputyId"
         - in: query
           name: search
           schema:
@@ -89,6 +91,18 @@ paths:
           schema:
             type: boolean
             default: false
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            enum: [name, city, region, deputy, status]
+            default: name
+        - in: query
+          name: sortDirection
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
         - in: query
           name: page
           schema:
@@ -109,6 +123,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LeadershipList"
+  /deputies:
+    get:
+      operationId: listFederalDeputies
+      tags: [campaign]
+      summary: List federal deputies with dynamic support totals
+      responses:
+        "200":
+          description: Federal deputy support list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FederalDeputy"
     post:
       operationId: createLeadership
       tags: [leaderships]
@@ -212,6 +240,12 @@ components:
       schema:
         type: integer
         minimum: 1
+    FederalDeputyId:
+      in: query
+      name: federalDeputyId
+      schema:
+        type: integer
+        minimum: 1
     LeadershipId:
       in: path
       name: id
@@ -258,7 +292,9 @@ components:
           type: string
         leadershipCount:
           type: integer
-      required: [id, name, regionId, regionName, leadershipCount]
+        deputyCount:
+          type: integer
+      required: [id, name, regionId, regionName, leadershipCount, deputyCount]
     FederalDeputy:
       type: object
       properties:
@@ -268,7 +304,11 @@ components:
           type: string
         isAlliance:
           type: boolean
-      required: [id, name, isAlliance]
+        leadershipCount:
+          type: integer
+        cityCount:
+          type: integer
+      required: [id, name, isAlliance, leadershipCount, cityCount]
     Leadership:
       type: object
       properties:

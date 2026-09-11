@@ -10,4 +10,6 @@ export interface FederalDeputy {
   id: number;
   name: string;
   isAlliance: boolean;
+  leadershipCount: number;
+  cityCount: number;
 }
