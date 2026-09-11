@@ -1,0 +1,188 @@
+Quero implementar as melhorias abaixo no sistema existente.
+
+**IMPORTANTE:** antes de começar a desenvolver, analise toda a estrutura atual do projeto, banco de dados, autenticação, usuários, papéis/permissões, módulo de tarefas e Agenda/Eventos.
+
+Não recrie funcionalidades que já existem. Reaproveite componentes, APIs, tabelas e padrões atuais sempre que possível. Faça as alterações de forma modular, sem quebrar funcionalidades existentes.
+
+## 1. AJUSTES DE INTERFACE
+
+* Todo elemento clicável (botões, cards clicáveis, ícones de ação, links etc.) deve utilizar `cursor: pointer`.
+* Manter o padrão visual e responsividade atual do sistema.
+
+## 2. INTEGRAÇÃO COM GOOGLE SHEETS
+
+Criar integração com a planilha **Campanha_EA_2026_REV-006**.
+
+Objetivo:
+
+* O sistema deverá apenas **LER** os dados do Google Sheets.
+* Não permitir edição da planilha através do sistema.
+* Criar uma área para visualizar/consultar os dados da planilha dentro do próprio sistema.
+* Essa planilha servirá principalmente para **conferência e cruzamento dos dados existentes no sistema**.
+* Avaliar a melhor forma de relacionar os registros da planilha com os registros do banco de dados.
+* A Agenda/Eventos do sistema também deverá conseguir relacionar seus eventos com as informações correspondentes existentes nessa planilha.
+
+Utilizar integração oficial/API do Google Sheets e credenciais através de variáveis de ambiente. Nunca deixar credenciais expostas no frontend.
+
+## 3. QUADROS E TAREFAS
+
+Evoluir o módulo atual de tarefas para funcionar também com **Quadros**.
+
+Permitir:
+
+* Criar novos quadros;
+* Editar quadros;
+* Arquivar quadros;
+* Visualizar quadros ativos e arquivados;
+* Organizar tarefas dentro de cada quadro.
+
+Ao criar ou clicar em uma tarefa, abrir um **modal completo de detalhes da tarefa**.
+
+O modal deverá permitir:
+
+* Título;
+* Descrição;
+* Status;
+* Responsável;
+* Adicionar outros membros;
+* Data/prazo;
+* Checklists;
+* Comentários;
+* Histórico básico das alterações.
+
+Os comentários devem permitir comunicação entre quem criou a tarefa, responsável e membros adicionados.
+
+Quando todas as tarefas forem concluídas, o quadro poderá ser arquivado, mas seu histórico deverá permanecer disponível.
+
+## 4. RETIRADA DE MATERIAL
+
+Criar um novo módulo chamado **Retirada de Material**, com CRUD completo.
+
+Criar formulário contendo:
+
+* Destino;
+* Localidade/cidade onde será realizada a retirada;
+* CEP;
+* Endereço;
+* Número;
+* Complemento;
+* Responsável pela retirada;
+* Data prevista para chegada/retirada;
+* Materiais;
+* Quantidade;
+* Observações;
+* Status da retirada.
+
+### Endereço
+
+Ao informar o CEP, consultar uma API de CEP e preencher automaticamente:
+
+* Logradouro;
+* Bairro;
+* Cidade;
+* Estado.
+
+Deixar Número e Complemento para preenchimento manual.
+
+### Responsável
+
+Permitir selecionar como responsável uma pessoa já cadastrada no sistema.
+
+Preferencialmente, ao escolher a cidade, priorizar/exibir usuários relacionados àquela cidade.
+
+### Materiais
+
+Permitir selecionar individualmente os materiais que estarão disponíveis para retirada.
+
+Também criar opção:
+
+**Selecionar todos**
+
+Cada material poderá possuir uma quantidade. A quantidade pode ser opcional caso ainda não tenha sido definida.
+
+Criar estrutura de dados adequada para que futuramente seja possível gerar relatórios de materiais enviados/retirados por cidade.
+
+## 5. AGENDA / EVENTOS + CALENDLY + GOOGLE CALENDAR
+
+Quero uma integração consistente entre:
+
+**Sistema ↔ Calendly ↔ Google Calendar**
+
+O módulo Agenda/Eventos existente deverá ser evoluído, não recriado.
+
+Objetivo:
+
+* Eventos/reuniões relevantes criados pelo Calendly devem aparecer no sistema;
+* As informações necessárias também devem estar sincronizadas com o Google Calendar;
+* Alterações e cancelamentos devem ser tratados corretamente;
+* Evitar criação de eventos duplicados;
+* Armazenar IDs externos necessários para identificar o mesmo evento entre os serviços;
+* Utilizar webhooks quando disponíveis, evitando polling desnecessário;
+* Registrar status de sincronização e erros para facilitar manutenção.
+
+Antes de implementar essa parte, analise as APIs e limitações atuais do Calendly e Google Calendar e defina qual serviço deverá ser a **fonte principal de verdade** para cada tipo de evento.
+
+Não criar uma sincronização circular que possa gerar eventos duplicados.
+
+## 6. BANCO DE DADOS
+
+Analise o schema atual antes de fazer alterações.
+
+Crie migrations apenas para o que realmente for necessário.
+
+Provavelmente precisaremos representar entidades como:
+
+* Quadros;
+* Tarefas;
+* Membros das tarefas;
+* Checklists;
+* Itens de checklist;
+* Comentários;
+* Retiradas de materiais;
+* Materiais da retirada;
+* Eventos;
+* IDs/referências das integrações externas.
+
+Adapte esses conceitos ao banco e arquitetura que já existem no projeto, em vez de criar estruturas duplicadas.
+
+Todas as relações devem possuir integridade referencial adequada.
+
+## 7. PERMISSÕES E SEGURANÇA
+
+Todas as novas funcionalidades devem respeitar o sistema atual de autenticação e papéis dos usuários.
+
+Não controlar permissões apenas escondendo elementos no frontend.
+
+As APIs/backend também devem validar se o usuário possui autorização para:
+
+* visualizar;
+* criar;
+* editar;
+* excluir/arquivar;
+* comentar;
+* atribuir usuários.
+
+Nunca expor tokens ou credenciais do Google, Calendly ou outros serviços no frontend.
+
+## ORDEM DE EXECUÇÃO
+
+Antes de escrever código:
+
+1. Analise o projeto atual.
+2. Identifique tecnologias, banco, autenticação e estrutura existente.
+3. Identifique o que já existe de Agenda, Eventos e Tarefas.
+4. Analise a estrutura da planilha **Campanha_EA_2026_REV-006** fornecida e identifique quais campos podem ser relacionados aos dados do sistema.
+5. Apresente um plano curto das alterações necessárias.
+6. Depois implemente módulo por módulo.
+
+Prioridade:
+
+**1. Ajustes de UI**
+**2. Google Sheets**
+**3. Quadros/Tarefas**
+**4. Retirada de Material**
+**5. Agenda + Calendly + Google Calendar**
+
+Após cada módulo, valide TypeScript/lint/build e corrija erros antes de avançar.
+
+Não faça grandes refatorações fora do escopo sem necessidade e preserve todas as funcionalidades existentes.
