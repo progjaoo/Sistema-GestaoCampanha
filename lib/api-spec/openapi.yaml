@@ -10,6 +10,12 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: campaign
+    description: Campaign overview and coverage
+  - name: leaderships
+    description: Leadership records
+  - name: review
+    description: Import and data quality review
 paths:
   /healthz:
     get:
@@ -24,7 +30,195 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /campaign/overview:
+    get:
+      operationId: getCampaignOverview
+      tags: [campaign]
+      summary: Get the campaign macro overview
+      responses:
+        "200":
+          description: Dynamic campaign aggregates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignOverview"
+  /regions:
+    get:
+      operationId: listRegions
+      tags: [campaign]
+      summary: List regions with dynamic leadership totals
+      responses:
+        "200":
+          description: Region list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Region"
+  /cities:
+    get:
+      operationId: listCities
+      tags: [campaign]
+      summary: List cities, optionally filtered by region
+      parameters:
+        - $ref: "#/components/parameters/RegionId"
+      responses:
+        "200":
+          description: City list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/City"
+  /leaderships:
+    get:
+      operationId: listLeaderships
+      tags: [leaderships]
+      summary: Search and paginate leadership records
+      parameters:
+        - $ref: "#/components/parameters/RegionId"
+        - $ref: "#/components/parameters/CityId"
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: reviewOnly
+          schema:
+            type: boolean
+            default: false
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+      responses:
+        "200":
+          description: Paginated leadership list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadershipList"
+    post:
+      operationId: createLeadership
+      tags: [leaderships]
+      summary: Create a leadership record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadershipInput"
+      responses:
+        "201":
+          description: Created leadership
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Leadership"
+        "400":
+          description: Invalid leadership
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /leaderships/{id}:
+    get:
+      operationId: getLeadership
+      tags: [leaderships]
+      summary: Get a leadership record
+      parameters:
+        - $ref: "#/components/parameters/LeadershipId"
+      responses:
+        "200":
+          description: Leadership detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Leadership"
+        "404":
+          description: Leadership not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: updateLeadership
+      tags: [leaderships]
+      summary: Update a leadership record
+      parameters:
+        - $ref: "#/components/parameters/LeadershipId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadershipUpdate"
+      responses:
+        "200":
+          description: Updated leadership
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Leadership"
+        "404":
+          description: Leadership not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /review/issues:
+    get:
+      operationId: listReviewIssues
+      tags: [review]
+      summary: List records that need reconciliation
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [open, resolved, all]
+            default: open
+      responses:
+        "200":
+          description: Review issue list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReviewIssue"
 components:
+  parameters:
+    RegionId:
+      in: query
+      name: regionId
+      schema:
+        type: integer
+        minimum: 1
+    CityId:
+      in: query
+      name: cityId
+      schema:
+        type: integer
+        minimum: 1
+    LeadershipId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +227,220 @@ components:
           type: string
       required:
         - status
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    Region:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        cityCount:
+          type: integer
+        leadershipCount:
+          type: integer
+      required: [id, name, cityCount, leadershipCount]
+    City:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        regionId:
+          type: integer
+        regionName:
+          type: string
+        leadershipCount:
+          type: integer
+      required: [id, name, regionId, regionName, leadershipCount]
+    FederalDeputy:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        isAlliance:
+          type: boolean
+      required: [id, name, isAlliance]
+    Leadership:
+      type: object
+      properties:
+        id:
+          type: integer
+        cityId:
+          type: integer
+        cityName:
+          type: string
+        regionId:
+          type: integer
+        regionName:
+          type: string
+        internalRegion:
+          type: ["string", "null"]
+        articulatorId:
+          type: ["integer", "null"]
+        articulatorName:
+          type: ["string", "null"]
+        coordinatorId:
+          type: ["integer", "null"]
+        coordinatorName:
+          type: ["string", "null"]
+        coordinatorContact:
+          type: ["string", "null"]
+        name:
+          type: string
+        leadershipContact:
+          type: ["string", "null"]
+        federalDeputyId:
+          type: ["integer", "null"]
+        federalDeputyName:
+          type: ["string", "null"]
+        allianceStatus:
+          type: ["string", "null"]
+        originalFederalDeputy:
+          type: ["string", "null"]
+        religion:
+          type: ["string", "null"]
+        sourceSheet:
+          type: string
+        sourceRow:
+          type: integer
+        needsReview:
+          type: boolean
+      required:
+        - id
+        - cityId
+        - cityName
+        - regionId
+        - regionName
+        - name
+        - sourceSheet
+        - sourceRow
+        - needsReview
+    LeadershipInput:
+      type: object
+      properties:
+        cityId:
+          type: integer
+        internalRegion:
+          type: ["string", "null"]
+        articulatorId:
+          type: ["integer", "null"]
+        coordinatorId:
+          type: ["integer", "null"]
+        coordinatorContact:
+          type: ["string", "null"]
+        name:
+          type: string
+          minLength: 1
+        leadershipContact:
+          type: ["string", "null"]
+        federalDeputyId:
+          type: ["integer", "null"]
+        allianceStatus:
+          type: ["string", "null"]
+        originalFederalDeputy:
+          type: ["string", "null"]
+        religion:
+          type: ["string", "null"]
+      required: [cityId, name]
+    LeadershipUpdate:
+      type: object
+      properties:
+        cityId:
+          type: integer
+        internalRegion:
+          type: ["string", "null"]
+        articulatorId:
+          type: ["integer", "null"]
+        coordinatorId:
+          type: ["integer", "null"]
+        coordinatorContact:
+          type: ["string", "null"]
+        name:
+          type: string
+          minLength: 1
+        leadershipContact:
+          type: ["string", "null"]
+        federalDeputyId:
+          type: ["integer", "null"]
+        allianceStatus:
+          type: ["string", "null"]
+        originalFederalDeputy:
+          type: ["string", "null"]
+        religion:
+          type: ["string", "null"]
+    LeadershipList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Leadership"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+      required: [items, total, page, pageSize]
+    CampaignOverview:
+      type: object
+      properties:
+        totals:
+          type: object
+          properties:
+            regions:
+              type: integer
+            cities:
+              type: integer
+            leaderships:
+              type: integer
+            reviewItems:
+              type: integer
+          required: [regions, cities, leaderships, reviewItems]
+        regions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Region"
+        topDeputies:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              leadershipCount:
+                type: integer
+            required: [name, leadershipCount]
+      required: [totals, regions, topDeputies]
+    ReviewIssue:
+      type: object
+      properties:
+        id:
+          type: integer
+        leadershipId:
+          type: integer
+        type:
+          type: string
+        severity:
+          type: string
+          enum: [high, medium, low]
+        details:
+          type: string
+        status:
+          type: string
+          enum: [open, resolved]
+        sourceSheet:
+          type: string
+        sourceRow:
+          type: integer
+      required: [id, leadershipId, type, severity, details, status, sourceSheet, sourceRow]
 
