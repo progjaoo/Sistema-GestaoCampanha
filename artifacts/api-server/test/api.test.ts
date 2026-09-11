@@ -11,6 +11,8 @@ import {
   campaignCalendarEventsTable,
   campaignCalendarSharesTable,
   campaignEventAcknowledgementsTable,
+  campaignWhatsappNotificationEventsTable,
+  campaignWhatsappShareBatchesTable,
   campaignTasksTable,
   citiesTable,
   db,
@@ -235,6 +237,12 @@ after(async () => {
   }
   if (fixtureUsers.length) {
     await db
+      .delete(campaignWhatsappNotificationEventsTable)
+      .where(inArray(campaignWhatsappNotificationEventsTable.createdByUserId, fixtureUsers.map((user) => user.id)));
+    await db
+      .delete(campaignWhatsappShareBatchesTable)
+      .where(inArray(campaignWhatsappShareBatchesTable.createdByUserId, fixtureUsers.map((user) => user.id)));
+    await db
       .delete(authUsersTable)
       .where(inArray(authUsersTable.id, fixtureUsers.map((user) => user.id)));
   }
@@ -303,12 +311,31 @@ test("confirma RBAC, agenda, aviso, compartilhamento e escopo operacional", asyn
   assert.equal(createdEvent.status, 201);
   fixtureEventIds.push(createdEvent.body.id);
   assert.equal(createdEvent.body.googleEventId, "google-created-task-9");
+  assert.equal(createdEvent.body.notification.eventId, createdEvent.body.id);
+  assert.ok(createdEvent.body.notification.messages.length >= 2);
+  assert.ok(createdEvent.body.notification.messages.every((message: { status: string; message: string }) => message.status === "prepared" && message.message.includes("Agenda criada no teste")));
   assert.equal(calendarCalls[0]?.path, "/calendar/v3/calendars/primary/events?sendUpdates=all");
   assert.match(String(calendarCalls[0]?.init?.body), /Agenda criada no teste/);
 
   const synced = await request("/api/calendar/sync", admin, { method: "POST" });
   assert.equal(synced.status, 200);
   assert.equal(synced.body.imported, 2);
+  assert.ok(synced.body.notificationsPrepared >= 1);
+  const notifications = await request("/api/calendar/notifications", admin);
+  assert.equal(notifications.status, 200);
+  const createdNotification = notifications.body.find((notification: { eventId: number }) => notification.eventId === createdEvent.body.id);
+  assert.ok(createdNotification);
+  const preparedMessage = createdNotification.messages.find((message: { status: string }) => message.status === "prepared");
+  assert.ok(preparedMessage);
+  const openedMessage = await request(`/api/calendar/notification-messages/${preparedMessage.id}/opened`, admin, { method: "POST" });
+  assert.equal(openedMessage.status, 200);
+  assert.equal(openedMessage.body.status, "opened");
+  const notificationsAfterOpen = await request("/api/calendar/notifications", admin);
+  const notificationAfterOpen = notificationsAfterOpen.body.find((notification: { eventId: number }) => notification.eventId === createdEvent.body.id);
+  assert.ok(notificationAfterOpen.messages.some((message: { id: number; status: string }) => message.id === preparedMessage.id && message.status === "opened"));
+  const secondSync = await request("/api/calendar/sync", admin, { method: "POST" });
+  assert.equal(secondSync.status, 200);
+  assert.equal(secondSync.body.notificationsPrepared, 0);
   const syncedRows = await request("/api/calendar/events", admin);
   assert.equal(syncedRows.status, 200);
   const syncRow = syncedRows.body.find(

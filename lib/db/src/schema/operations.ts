@@ -26,7 +26,7 @@ export const campaignTasksTable = pgTable(
     cityId: integer("city_id").references(() => citiesTable.id),
     leadershipId: integer("leadership_id").references(() => leadershipsTable.id),
     assigneeUserId: integer("assignee_user_id").references(() => authUsersTable.id),
-    createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id),
+    createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
@@ -196,6 +196,61 @@ export const campaignCalendarSharesTable = pgTable(
   ],
 );
 
+export const campaignWhatsappRecipientGroupsTable = pgTable(
+  "campaign_whatsapp_recipient_groups",
+  {
+    id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    name: text("name").notNull(),
+    kind: text("kind").notNull().default("institutional"),
+    active: boolean("active").notNull().default(true),
+    createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("campaign_whatsapp_groups_name_unique").on(table.name),
+    index("campaign_whatsapp_groups_kind_idx").on(table.kind, table.active),
+  ],
+);
+
+export const campaignWhatsappRecipientGroupMembersTable = pgTable(
+  "campaign_whatsapp_recipient_group_members",
+  {
+    id: integer("id").generatedAlwaysAsIdentity().notNull(),
+    groupId: integer("group_id").notNull().references(() => campaignWhatsappRecipientGroupsTable.id, { onDelete: "cascade" }),
+    userId: integer("user_id").references(() => authUsersTable.id, { onDelete: "set null" }),
+    recipientName: text("recipient_name").notNull(),
+    phone: text("phone").notNull(),
+    active: boolean("active").notNull().default(true),
+    addedByUserId: integer("added_by_user_id").notNull().references(() => authUsersTable.id),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.groupId, table.phone] }),
+    uniqueIndex("campaign_whatsapp_group_members_id_key").on(table.id),
+    index("campaign_whatsapp_group_members_user_idx").on(table.userId, table.active),
+  ],
+);
+
+export const campaignWhatsappNotificationEventsTable = pgTable(
+  "campaign_whatsapp_notification_events",
+  {
+    id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    triggerType: text("trigger_type").notNull(),
+    calendarEventId: integer("calendar_event_id").references(() => campaignCalendarEventsTable.id, { onDelete: "set null" }),
+    calendarShareId: integer("calendar_share_id").references(() => campaignCalendarSharesTable.id, { onDelete: "set null" }),
+    recipientGroupId: integer("recipient_group_id").references(() => campaignWhatsappRecipientGroupsTable.id, { onDelete: "set null" }),
+    dedupeKey: text("dedupe_key").notNull(),
+    createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("campaign_whatsapp_notifications_dedupe_unique").on(table.dedupeKey),
+    index("campaign_whatsapp_notifications_event_idx").on(table.calendarEventId, table.createdAt),
+    index("campaign_whatsapp_notifications_share_idx").on(table.calendarShareId, table.createdAt),
+  ],
+);
+
 export const campaignWhatsappShareBatchesTable = pgTable(
   "campaign_whatsapp_share_batches",
   {
@@ -203,12 +258,14 @@ export const campaignWhatsappShareBatchesTable = pgTable(
     kind: text("kind").notNull(),
     taskId: integer("task_id").references(() => campaignTasksTable.id, { onDelete: "set null" }),
     calendarShareId: integer("calendar_share_id").references(() => campaignCalendarSharesTable.id, { onDelete: "set null" }),
+    notificationEventId: integer("notification_event_id").references(() => campaignWhatsappNotificationEventsTable.id, { onDelete: "cascade" }),
     createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("campaign_whatsapp_batches_task_idx").on(table.taskId, table.createdAt),
     index("campaign_whatsapp_batches_calendar_idx").on(table.calendarShareId, table.createdAt),
+    index("campaign_whatsapp_batches_notification_idx").on(table.notificationEventId),
   ],
 );
 
@@ -220,14 +277,19 @@ export const campaignWhatsappShareMessagesTable = pgTable(
     recipientType: text("recipient_type").notNull(),
     recipientUserId: integer("recipient_user_id").references(() => authUsersTable.id, { onDelete: "set null" }),
     recipientLeadershipId: integer("recipient_leadership_id").references(() => leadershipsTable.id, { onDelete: "set null" }),
+     recipientGroupMemberId: integer("recipient_group_member_id").references(() => campaignWhatsappRecipientGroupMembersTable.id, { onDelete: "set null" }),
     recipientName: text("recipient_name").notNull(),
     phone: text("phone").notNull(),
     message: text("message").notNull(),
     whatsappUrl: text("whatsapp_url").notNull(),
+    status: text("status").notNull().default("prepared"),
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+    openedByUserId: integer("opened_by_user_id").references(() => authUsersTable.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index("campaign_whatsapp_messages_batch_idx").on(table.batchId),
+    index("campaign_whatsapp_messages_status_idx").on(table.status, table.openedAt),
   ],
 );
 
@@ -264,5 +326,8 @@ export type CampaignTaskComment = typeof campaignTaskCommentsTable.$inferSelect;
 export type CampaignTaskActivity = typeof campaignTaskActivityTable.$inferSelect;
 export type CampaignCalendarEvent = typeof campaignCalendarEventsTable.$inferSelect;
 export type CampaignCalendarShare = typeof campaignCalendarSharesTable.$inferSelect;
+export type CampaignWhatsappRecipientGroup = typeof campaignWhatsappRecipientGroupsTable.$inferSelect;
+export type CampaignWhatsappRecipientGroupMember = typeof campaignWhatsappRecipientGroupMembersTable.$inferSelect;
+export type CampaignWhatsappNotificationEvent = typeof campaignWhatsappNotificationEventsTable.$inferSelect;
 export type CampaignWhatsappShareBatch = typeof campaignWhatsappShareBatchesTable.$inferSelect;
 export type CampaignWhatsappShareMessage = typeof campaignWhatsappShareMessagesTable.$inferSelect;

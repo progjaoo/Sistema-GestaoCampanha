@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request } from "express";
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import {
   authUsersTable,
@@ -8,6 +8,9 @@ import {
   campaignCalendarEventsTable,
   campaignCalendarSyncStateTable,
   campaignCalendarSharesTable,
+  campaignWhatsappNotificationEventsTable,
+  campaignWhatsappRecipientGroupMembersTable,
+  campaignWhatsappRecipientGroupsTable,
   campaignWhatsappShareBatchesTable,
   campaignWhatsappShareMessagesTable,
   campaignEventAcknowledgementsTable,
@@ -94,6 +97,310 @@ function parseShareRecipients(value: unknown): ShareRecipientKey[] | null {
   });
   if (parsed.length !== value.length) return null;
   return [...new Map(parsed.map((item) => [`${item.type}:${item.id}`, item])).values()];
+}
+
+type CalendarShareRecipient = {
+  id: number;
+  type: "user" | "leadership";
+  name: string | null;
+  role: string;
+  phone: string;
+  email: string | null;
+};
+
+type AutomaticCalendarRecipient = {
+  recipientType: "user" | "leadership" | "group_member";
+  recipientUserId: number | null;
+  recipientLeadershipId: number | null;
+  recipientGroupMemberId?: number | null;
+  recipientName: string;
+  phone: string;
+  groupMemberKey?: string;
+  recipientGroupId?: number;
+};
+
+function calendarWeekStart(value: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(value);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+  const localDate = new Date(Date.UTC(Number(part("year")), Number(part("month")) - 1, Number(part("day"))));
+  const mondayOffset = (localDate.getUTCDay() + 6) % 7;
+  localDate.setUTCDate(localDate.getUTCDate() - mondayOffset);
+  return `${localDate.getUTCFullYear()}-${String(localDate.getUTCMonth() + 1).padStart(2, "0")}-${String(localDate.getUTCDate()).padStart(2, "0")}`;
+}
+
+async function coordinationGroupRecipients(): Promise<AutomaticCalendarRecipient[]> {
+  const rows = await db
+    .select({
+      groupId: campaignWhatsappRecipientGroupsTable.id,
+      groupMemberId: campaignWhatsappRecipientGroupMembersTable.id,
+      phone: campaignWhatsappRecipientGroupMembersTable.phone,
+      name: campaignWhatsappRecipientGroupMembersTable.recipientName,
+    })
+    .from(campaignWhatsappRecipientGroupMembersTable)
+    .innerJoin(campaignWhatsappRecipientGroupsTable, eq(campaignWhatsappRecipientGroupsTable.id, campaignWhatsappRecipientGroupMembersTable.groupId))
+    .where(and(
+      eq(campaignWhatsappRecipientGroupsTable.kind, "coordination_general"),
+      eq(campaignWhatsappRecipientGroupsTable.active, true),
+      eq(campaignWhatsappRecipientGroupMembersTable.active, true),
+    ))
+    .orderBy(asc(campaignWhatsappRecipientGroupMembersTable.recipientName));
+  return rows.flatMap((row) => {
+    const phone = normalizeWhatsAppPhone(row.phone);
+    return phone
+      ? [{
+          recipientType: "group_member" as const,
+          recipientUserId: null,
+          recipientLeadershipId: null,
+          recipientName: row.name,
+          phone,
+          groupMemberKey: `${row.groupId}:${phone}`,
+           recipientGroupId: row.groupId,
+           recipientGroupMemberId: row.groupMemberId,
+        }]
+      : [];
+  });
+}
+
+async function territorialCalendarRecipients(
+  cityIds: number[],
+  principal: NonNullable<Express.Request["auth"]>,
+): Promise<CalendarShareRecipient[]> {
+  const uniqueCityIds = [...new Set(cityIds)].filter((cityId) => Number.isInteger(cityId) && cityId > 0);
+  if (!uniqueCityIds.length) return [];
+  const [users, leaderships] = await Promise.all([
+    db.select({
+      id: authUsersTable.id,
+      type: sql<"user">`'user'`,
+      name: authUsersTable.fullName,
+      role: authUsersTable.role,
+      phone: authUsersTable.phone,
+      email: authUsersTable.email,
+    }).from(authUsersTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, authUsersTable.cityId))
+      .where(and(
+        eq(authUsersTable.isActive, true),
+        inArray(authUsersTable.cityId, uniqueCityIds),
+        sql`${authUsersTable.phone} is not null`,
+        cityScopeCondition(principal),
+      ))
+      .orderBy(asc(authUsersTable.fullName)),
+    db.select({
+      id: leadershipsTable.id,
+      type: sql<"leadership">`'leadership'`,
+      name: leadershipsTable.name,
+      role: sql<string>`'LIDERANCA'`,
+      phone: leadershipsTable.leadershipContact,
+      email: sql<string>`null`,
+    }).from(leadershipsTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, leadershipsTable.cityId))
+      .where(and(
+        inArray(leadershipsTable.cityId, uniqueCityIds),
+        sql`${leadershipsTable.leadershipContact} is not null`,
+        cityScopeCondition(principal),
+      ))
+      .orderBy(asc(leadershipsTable.name)),
+  ]);
+  return [...users, ...leaderships].flatMap((recipient) => {
+    const phone = normalizeWhatsAppPhone(recipient.phone);
+    return phone ? [{ ...recipient, phone }] : [];
+  });
+}
+
+async function calendarShareForScope(
+  weekStart: string,
+  principal: NonNullable<Express.Request["auth"]>,
+  label?: string,
+) {
+  const scope = calendarShareScope(principal);
+  const scopeFilters = [
+    eq(campaignCalendarSharesTable.weekStart, weekStart),
+    eq(campaignCalendarSharesTable.active, true),
+    eq(campaignCalendarSharesTable.scopeType, scope.scopeType),
+    scope.scopeRegionId === null ? isNull(campaignCalendarSharesTable.scopeRegionId) : eq(campaignCalendarSharesTable.scopeRegionId, scope.scopeRegionId),
+    scope.scopeCityId === null ? isNull(campaignCalendarSharesTable.scopeCityId) : eq(campaignCalendarSharesTable.scopeCityId, scope.scopeCityId),
+  ];
+  const [existing] = await db.select({
+    id: campaignCalendarSharesTable.id,
+    token: campaignCalendarSharesTable.token,
+    weekStart: campaignCalendarSharesTable.weekStart,
+    label: campaignCalendarSharesTable.label,
+    scopeType: campaignCalendarSharesTable.scopeType,
+    scopeRegionId: campaignCalendarSharesTable.scopeRegionId,
+    scopeCityId: campaignCalendarSharesTable.scopeCityId,
+  }).from(campaignCalendarSharesTable).where(and(...scopeFilters)).limit(1);
+  if (existing) return { share: existing, created: false };
+  const [created] = await db.insert(campaignCalendarSharesTable).values({
+    token: randomBytes(24).toString("base64url"),
+    weekStart,
+    label: label ?? `Agenda de ${weekStart}`,
+    ...scope,
+    createdByUserId: principal.user.id,
+  }).returning({
+    id: campaignCalendarSharesTable.id,
+    token: campaignCalendarSharesTable.token,
+    weekStart: campaignCalendarSharesTable.weekStart,
+    label: campaignCalendarSharesTable.label,
+    scopeType: campaignCalendarSharesTable.scopeType,
+    scopeRegionId: campaignCalendarSharesTable.scopeRegionId,
+    scopeCityId: campaignCalendarSharesTable.scopeCityId,
+  });
+  return { share: created, created: true };
+}
+
+async function automaticCalendarNotification(
+  input: {
+    triggerType: string;
+    dedupeKey: string;
+    share: {
+      id: number;
+      token: string;
+      weekStart: string;
+      label: string;
+      scopeType: string;
+      scopeRegionId: number | null;
+      scopeCityId: number | null;
+    };
+    event?: {
+      id: number;
+      title: string;
+      startsAt: Date;
+      endsAt: Date;
+      cityId: number;
+      cityName: string;
+      location: string | null;
+    };
+    principal: NonNullable<Express.Request["auth"]>;
+    request: Request;
+  },
+) {
+  const [existing] = await db.select({
+    id: campaignWhatsappNotificationEventsTable.id,
+  }).from(campaignWhatsappNotificationEventsTable)
+    .where(eq(campaignWhatsappNotificationEventsTable.dedupeKey, input.dedupeKey))
+    .limit(1);
+  if (existing) return null;
+
+  const groupRecipients = await coordinationGroupRecipients();
+  const cityIds = input.event
+    ? [input.event.cityId]
+    : await db.select({ cityId: campaignCalendarEventsTable.cityId })
+      .from(campaignCalendarEventsTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId))
+      .where(and(
+        eq(campaignCalendarEventsTable.source, "google"),
+        gte(campaignCalendarEventsTable.startsAt, weekBounds(input.share.weekStart)!.start),
+        lt(campaignCalendarEventsTable.startsAt, weekBounds(input.share.weekStart)!.end),
+        calendarShareScopeCondition(input.share),
+      ))
+      .then((rows) => rows.map((row) => row.cityId));
+  const territorialRecipients = await territorialCalendarRecipients(cityIds, input.principal);
+  const weeklyEvents = input.event
+    ? []
+    : await db.select({
+        title: campaignCalendarEventsTable.title,
+        startsAt: campaignCalendarEventsTable.startsAt,
+        cityName: citiesTable.name,
+        location: campaignCalendarEventsTable.location,
+      })
+      .from(campaignCalendarEventsTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId))
+      .where(and(
+        eq(campaignCalendarEventsTable.source, "google"),
+        gte(campaignCalendarEventsTable.startsAt, weekBounds(input.share.weekStart)!.start),
+        lt(campaignCalendarEventsTable.startsAt, weekBounds(input.share.weekStart)!.end),
+        calendarShareScopeCondition(input.share),
+      ))
+      .orderBy(asc(campaignCalendarEventsTable.startsAt));
+  const recipients = [...groupRecipients, ...territorialRecipients.map((recipient) => ({
+    recipientType: recipient.type,
+    recipientUserId: recipient.type === "user" ? recipient.id : null,
+    recipientLeadershipId: recipient.type === "leadership" ? recipient.id : null,
+    recipientGroupMemberId: null,
+    recipientName: recipient.name ?? "Destinatário",
+    phone: recipient.phone,
+  }))].filter((recipient, index, all) => all.findIndex((item) => item.phone === recipient.phone) === index);
+  if (!recipients.length) return null;
+  const recipientGroupId = groupRecipients.find((recipient) => recipient.recipientGroupId)?.recipientGroupId ?? null;
+
+  const agendaLink = `${appUrl(input.request)}/agenda/compartilhada/${input.share.token}`;
+  const lines = [
+    input.event ? `Nova agenda: ${input.event.title}` : `EA 2026 — ${input.share.label}`,
+    input.event
+      ? [
+          `Data: ${formatShareDate(input.event.startsAt)}`,
+          `Cidade: ${input.event.cityName}`,
+          input.event.location ? `Local: ${input.event.location}` : null,
+        ].filter(Boolean).join("\n")
+      : weeklyEvents.length
+        ? weeklyEvents.slice(0, 20).map((event) => [
+            `• ${formatShareDate(event.startsAt)} — ${event.title}`,
+            `  Cidade: ${event.cityName}${event.location ? ` · ${event.location}` : ""}`,
+          ].join("\n")).join("\n")
+        : "Nenhum compromisso cadastrado para esta semana.",
+    `Abrir agenda completa: ${agendaLink}`,
+    `Preparada em: ${formatShareDate(new Date())}`,
+  ].join("\n");
+
+  const [notification, messageRows] = await db.transaction(async (tx) => {
+    const [createdNotification] = await tx.insert(campaignWhatsappNotificationEventsTable).values({
+      triggerType: input.triggerType,
+      calendarEventId: input.event?.id ?? null,
+      calendarShareId: input.share.id,
+      recipientGroupId,
+      dedupeKey: input.dedupeKey,
+      createdByUserId: input.principal.user.id,
+    }).returning({
+      id: campaignWhatsappNotificationEventsTable.id,
+      triggerType: campaignWhatsappNotificationEventsTable.triggerType,
+      createdAt: campaignWhatsappNotificationEventsTable.createdAt,
+    });
+    const [batch] = await tx.insert(campaignWhatsappShareBatchesTable).values({
+      kind: "calendar_automatic",
+      calendarShareId: input.share.id,
+      notificationEventId: createdNotification.id,
+      createdByUserId: input.principal.user.id,
+    }).returning({ id: campaignWhatsappShareBatchesTable.id });
+    const inserted = await tx.insert(campaignWhatsappShareMessagesTable).values(recipients.map((recipient) => ({
+      batchId: batch.id,
+      recipientType: recipient.recipientType,
+      recipientUserId: recipient.recipientUserId,
+      recipientLeadershipId: recipient.recipientLeadershipId,
+       recipientGroupMemberId: recipient.recipientGroupMemberId ?? null,
+      recipientName: recipient.recipientName,
+      phone: recipient.phone,
+      message: lines,
+      whatsappUrl: `https://wa.me/${recipient.phone}?text=${encodeURIComponent(lines)}`,
+      status: "prepared",
+    }))).returning({
+      id: campaignWhatsappShareMessagesTable.id,
+      recipientType: campaignWhatsappShareMessagesTable.recipientType,
+      recipientName: campaignWhatsappShareMessagesTable.recipientName,
+      phone: campaignWhatsappShareMessagesTable.phone,
+      message: campaignWhatsappShareMessagesTable.message,
+      whatsappUrl: campaignWhatsappShareMessagesTable.whatsappUrl,
+      status: campaignWhatsappShareMessagesTable.status,
+      openedAt: campaignWhatsappShareMessagesTable.openedAt,
+    });
+    return [createdNotification, inserted] as const;
+  });
+  return {
+    id: notification.id,
+    triggerType: notification.triggerType,
+    createdAt: notification.createdAt,
+    calendarShareId: input.share.id,
+    shareToken: input.share.token,
+    weekStart: input.share.weekStart,
+    label: input.share.label,
+    eventId: input.event?.id ?? null,
+    eventTitle: input.event?.title ?? null,
+    messages: messageRows,
+  };
 }
 
 function appUrl(req: Express.Request): string {
@@ -1180,21 +1487,21 @@ router.post(
       res.status(400).json({ error: "A semana da agenda é obrigatória." });
       return;
     }
-    const token = randomBytes(24).toString("base64url");
-    const shareScope = calendarShareScope(req.auth!);
-    const [share] = await db.insert(campaignCalendarSharesTable).values({
-      token,
-      weekStart: req.body.weekStart,
-      label: stringValue(req.body.label) ?? "Agenda semanal",
-      ...shareScope,
-      createdByUserId: req.auth!.user.id,
-    }).returning({
-      id: campaignCalendarSharesTable.id,
-      token: campaignCalendarSharesTable.token,
-      weekStart: campaignCalendarSharesTable.weekStart,
-      label: campaignCalendarSharesTable.label,
-    });
-    res.status(201).json(share);
+    const { share, created } = await calendarShareForScope(
+      req.body.weekStart,
+      req.auth!,
+      stringValue(req.body.label) ?? "Agenda semanal",
+    );
+    const notification = created
+      ? await automaticCalendarNotification({
+          triggerType: "weekly_share_created",
+          dedupeKey: `weekly_share_created:${share.id}`,
+          share,
+          principal: req.auth!,
+          request: req,
+        })
+      : null;
+    res.status(201).json({ ...share, created, notification });
   },
 );
 
@@ -1232,7 +1539,7 @@ router.get(
       .innerJoin(authUsersTable, eq(authUsersTable.id, campaignWhatsappShareBatchesTable.createdByUserId))
       .innerJoin(campaignCalendarSharesTable, eq(campaignCalendarSharesTable.id, campaignWhatsappShareBatchesTable.calendarShareId))
       .where(and(
-        eq(campaignWhatsappShareBatchesTable.kind, "calendar"),
+        inArray(campaignWhatsappShareBatchesTable.kind, ["calendar", "calendar_automatic"]),
         eq(campaignCalendarSharesTable.weekStart, weekStart),
         req.auth!.user.role === "ADMIN_GERAL"
           ? undefined
@@ -1249,10 +1556,101 @@ router.get(
         phone: campaignWhatsappShareMessagesTable.phone,
         message: campaignWhatsappShareMessagesTable.message,
         whatsappUrl: campaignWhatsappShareMessagesTable.whatsappUrl,
+         status: campaignWhatsappShareMessagesTable.status,
+         openedAt: campaignWhatsappShareMessagesTable.openedAt,
       }).from(campaignWhatsappShareMessagesTable)
         .where(eq(campaignWhatsappShareMessagesTable.batchId, share.id))
         .orderBy(asc(campaignWhatsappShareMessagesTable.id)),
     }))));
+  },
+);
+
+router.get(
+  "/calendar/notifications",
+  requirePermission("calendar:manage"),
+  async (req, res): Promise<void> => {
+    const batches = await db
+      .select({
+        notificationId: campaignWhatsappNotificationEventsTable.id,
+        triggerType: campaignWhatsappNotificationEventsTable.triggerType,
+        createdAt: campaignWhatsappNotificationEventsTable.createdAt,
+        eventId: campaignWhatsappNotificationEventsTable.calendarEventId,
+        eventTitle: campaignCalendarEventsTable.title,
+        eventCityName: citiesTable.name,
+        shareId: campaignCalendarSharesTable.id,
+        shareToken: campaignCalendarSharesTable.token,
+        shareLabel: campaignCalendarSharesTable.label,
+        weekStart: campaignCalendarSharesTable.weekStart,
+        createdByName: authUsersTable.fullName,
+        createdByUserId: campaignWhatsappShareBatchesTable.createdByUserId,
+        batchId: campaignWhatsappShareBatchesTable.id,
+      })
+      .from(campaignWhatsappShareBatchesTable)
+      .innerJoin(campaignWhatsappNotificationEventsTable, eq(campaignWhatsappNotificationEventsTable.id, campaignWhatsappShareBatchesTable.notificationEventId))
+      .innerJoin(authUsersTable, eq(authUsersTable.id, campaignWhatsappShareBatchesTable.createdByUserId))
+      .leftJoin(campaignCalendarSharesTable, eq(campaignCalendarSharesTable.id, campaignWhatsappShareBatchesTable.calendarShareId))
+      .leftJoin(campaignCalendarEventsTable, eq(campaignCalendarEventsTable.id, campaignWhatsappNotificationEventsTable.calendarEventId))
+      .leftJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId))
+      .where(and(
+        inArray(campaignWhatsappShareBatchesTable.kind, ["calendar_automatic"]),
+        req.auth!.user.role === "ADMIN_GERAL"
+          ? undefined
+          : eq(campaignWhatsappShareBatchesTable.createdByUserId, req.auth!.user.id),
+      ))
+      .orderBy(desc(campaignWhatsappNotificationEventsTable.createdAt))
+      .limit(30);
+    res.json(await Promise.all(batches.map(async (batch) => ({
+      ...batch,
+      messages: await db.select({
+        id: campaignWhatsappShareMessagesTable.id,
+        recipientType: campaignWhatsappShareMessagesTable.recipientType,
+        recipientName: campaignWhatsappShareMessagesTable.recipientName,
+        phone: campaignWhatsappShareMessagesTable.phone,
+        message: campaignWhatsappShareMessagesTable.message,
+        whatsappUrl: campaignWhatsappShareMessagesTable.whatsappUrl,
+        status: campaignWhatsappShareMessagesTable.status,
+        openedAt: campaignWhatsappShareMessagesTable.openedAt,
+      }).from(campaignWhatsappShareMessagesTable)
+        .where(eq(campaignWhatsappShareMessagesTable.batchId, batch.batchId))
+        .orderBy(asc(campaignWhatsappShareMessagesTable.id)),
+    }))));
+  },
+);
+
+router.post(
+  "/calendar/notification-messages/:id/opened",
+  requirePermission("calendar:manage"),
+  async (req, res): Promise<void> => {
+    const messageId = Number(req.params.id);
+    if (!Number.isInteger(messageId) || messageId <= 0) {
+      res.status(400).json({ error: "Mensagem inválida." });
+      return;
+    }
+    const [message] = await db
+      .select({ id: campaignWhatsappShareMessagesTable.id })
+      .from(campaignWhatsappShareMessagesTable)
+      .innerJoin(campaignWhatsappShareBatchesTable, eq(campaignWhatsappShareBatchesTable.id, campaignWhatsappShareMessagesTable.batchId))
+      .where(and(
+        eq(campaignWhatsappShareMessagesTable.id, messageId),
+        inArray(campaignWhatsappShareBatchesTable.kind, ["calendar", "calendar_automatic"]),
+        req.auth!.user.role === "ADMIN_GERAL"
+          ? undefined
+          : eq(campaignWhatsappShareBatchesTable.createdByUserId, req.auth!.user.id),
+      ));
+    if (!message) {
+      res.status(404).json({ error: "Mensagem não encontrada." });
+      return;
+    }
+    const [updated] = await db.update(campaignWhatsappShareMessagesTable).set({
+      status: "opened",
+      openedAt: new Date(),
+      openedByUserId: req.auth!.user.id,
+    }).where(eq(campaignWhatsappShareMessagesTable.id, messageId)).returning({
+      id: campaignWhatsappShareMessagesTable.id,
+      status: campaignWhatsappShareMessagesTable.status,
+      openedAt: campaignWhatsappShareMessagesTable.openedAt,
+    });
+    res.json(updated);
   },
 );
 
@@ -1330,12 +1728,21 @@ router.post(
         calendarShareId: share.id,
         createdByUserId: req.auth!.user.id,
       }).returning({ id: campaignWhatsappShareBatchesTable.id, createdAt: campaignWhatsappShareBatchesTable.createdAt });
-      await tx.insert(campaignWhatsappShareMessagesTable).values(messages.map((message) => ({ ...message, batchId: createdBatch.id })));
-      return createdBatch;
+      const insertedMessages = await tx.insert(campaignWhatsappShareMessagesTable).values(messages.map((message) => ({ ...message, batchId: createdBatch.id }))).returning({
+        id: campaignWhatsappShareMessagesTable.id,
+        recipientType: campaignWhatsappShareMessagesTable.recipientType,
+        recipientName: campaignWhatsappShareMessagesTable.recipientName,
+        phone: campaignWhatsappShareMessagesTable.phone,
+        message: campaignWhatsappShareMessagesTable.message,
+        whatsappUrl: campaignWhatsappShareMessagesTable.whatsappUrl,
+        status: campaignWhatsappShareMessagesTable.status,
+        openedAt: campaignWhatsappShareMessagesTable.openedAt,
+      });
+      return { batch: createdBatch, messages: insertedMessages };
     });
     res.status(201).json({
-      batch: { ...batch, createdByName: req.auth!.user.fullName },
-      messages: messages.map((message, index) => ({ id: index + 1, ...message })),
+      batch: { ...batch.batch, createdByName: req.auth!.user.fullName },
+      messages: batch.messages,
     });
   },
 );
@@ -1403,7 +1810,24 @@ router.post(
       sourceUpdatedAt: new Date(),
       createdByUserId: req.auth!.user.id,
     }).returning();
-    res.status(201).json(created);
+    const { share } = await calendarShareForScope(calendarWeekStart(startsAt), req.auth!, `Agenda de ${calendarWeekStart(startsAt)}`);
+    const notification = await automaticCalendarNotification({
+      triggerType: "event_created",
+      dedupeKey: `event_created:${created.id}`,
+      share,
+      event: {
+        id: created.id,
+        title: created.title,
+        startsAt: created.startsAt,
+        endsAt: created.endsAt,
+        cityId: created.cityId,
+        cityName: city.name,
+        location: created.location,
+      },
+      principal: req.auth!,
+      request: req,
+    });
+    res.status(201).json({ ...created, share, notification });
   },
 );
 
@@ -1429,6 +1853,7 @@ router.post(
     const visibleCityIds = new Set(visibleCities.map((city) => city.id));
     let googleImported = 0;
     let googleCancelled = 0;
+    let notificationsPrepared = 0;
     const errors: string[] = [];
 
     try {
@@ -1455,7 +1880,13 @@ router.post(
           continue;
         }
         if (!start || !end || typeof event.summary !== "string") continue;
-        await db.insert(campaignCalendarEventsTable).values({
+        const [existing] = await db.select({
+          id: campaignCalendarEventsTable.id,
+        }).from(campaignCalendarEventsTable).where(and(
+          eq(campaignCalendarEventsTable.googleCalendarId, "primary"),
+          eq(campaignCalendarEventsTable.googleEventId, event.id),
+        )).limit(1);
+        const [upserted] = await db.insert(campaignCalendarEventsTable).values({
           source: "google",
           googleCalendarId: "primary",
           googleEventId: event.id,
@@ -1485,7 +1916,28 @@ router.post(
             sourceUpdatedAt: dateValue(event.updated),
             updatedAt: new Date(),
           },
-        });
+        }).returning();
+        if (!existing && upserted) {
+          const [eventCity] = await db.select({ name: citiesTable.name }).from(citiesTable).where(eq(citiesTable.id, cityId));
+          const { share } = await calendarShareForScope(calendarWeekStart(start), req.auth!, `Agenda de ${calendarWeekStart(start)}`);
+          const notification = await automaticCalendarNotification({
+            triggerType: "event_imported",
+            dedupeKey: `event_imported:${upserted.id}`,
+            share,
+            event: {
+              id: upserted.id,
+              title: upserted.title,
+              startsAt: upserted.startsAt,
+              endsAt: upserted.endsAt,
+              cityId: upserted.cityId,
+              cityName: eventCity?.name ?? "Cidade não informada",
+              location: upserted.location,
+            },
+            principal: req.auth!,
+            request: req,
+          });
+          if (notification) notificationsPrepared += 1;
+        }
         googleImported += 1;
       }
       await recordSyncState("google", "ok");
@@ -1499,6 +1951,7 @@ router.post(
       imported: googleImported,
       googleImported,
       googleCancelled,
+      notificationsPrepared,
       errors,
       syncedAt: new Date().toISOString(),
     });
