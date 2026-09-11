@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, Copy, ExternalLink, History, LayoutList, Link2, MapPin, MessageCircle, RefreshCw, Send, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Copy, ExternalLink, History, LayoutList, Link2, MapPin, MessageCircle, RefreshCw, Send, Trash2, X } from "lucide-react";
 import { useListCities } from "@workspace/api-client-react";
 import { authFetch, useAuth } from "@/lib/auth";
 import { ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
@@ -48,6 +48,7 @@ export default function AgendaPage() {
   const [syncStates, setSyncStates] = useState<SyncStatus[]>([]);
   const [showWhatsAppShare, setShowWhatsAppShare] = useState(false);
   const [automaticNotification, setAutomaticNotification] = useState<AutomaticNotification | null>(null);
+  const [deletingEventId, setDeletingEventId] = useState<number | null>(null);
 
   async function load() {
     setLoading(true); setError("");
@@ -72,6 +73,20 @@ export default function AgendaPage() {
   useEffect(() => { void load(); }, []);
   async function sync() { try { await read(await authFetch("/api/calendar/sync", { method: "POST" })); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível sincronizar."); } }
   async function acknowledge(event: EventRow) { localStorage.setItem(`ea-event-seen-${event.id}`, "1"); await authFetch(`/api/calendar/events/${event.id}/acknowledge`, { method: "POST" }).catch(() => undefined); setNotice(null); }
+  async function deleteEvent(event: EventRow) {
+    if (!can("calendar:manage") || !window.confirm(`Excluir o evento “${event.title}” do Google Calendar e da Agenda?`)) return;
+    setDeletingEventId(event.id);
+    setError("");
+    try {
+      await read(await authFetch(`/api/calendar/events/${event.id}`, { method: "DELETE" }));
+      setEvents((current) => current.filter((item) => item.id !== event.id));
+      setNotice((current) => current?.id === event.id ? null : current);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível excluir o evento.");
+    } finally {
+      setDeletingEventId(null);
+    }
+  }
   async function createShareLink() {
     setShareMessage("");
     try {
@@ -100,7 +115,31 @@ export default function AgendaPage() {
       <div className="flex items-center gap-2"><button onClick={() => setView("list")} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-extrabold ${view === "list" ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted"}`}><LayoutList size={14} /> Lista</button><button onClick={() => setView("week")} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-extrabold ${view === "week" ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted"}`}><CalendarDays size={14} /> Calendário semanal</button></div>
       {view === "week" && <div className="flex items-center gap-2"><button onClick={() => setWeekStart((date) => { const next = new Date(date); next.setDate(next.getDate() - 7); return next; })} className="rounded-lg border border-border p-2 hover:bg-muted" aria-label="Semana anterior"><ChevronLeft size={15} /></button><span className="min-w-[190px] text-center text-xs font-extrabold capitalize">{weekLabel(weekStart)}</span><button onClick={() => setWeekStart((date) => { const next = new Date(date); next.setDate(next.getDate() + 7); return next; })} className="rounded-lg border border-border p-2 hover:bg-muted" aria-label="Próxima semana"><ChevronRight size={15} /></button></div>}
     </div>
-    {view === "week" ? <div className="overflow-x-auto rounded-2xl border border-border bg-card p-3"><div className="grid min-w-[980px] grid-cols-7 gap-2">{days.map((day) => { const key = dateKey(day); const dayEvents = weekEvents.filter((event) => eventDateKey(event) === key); return <section key={key} className="min-h-[430px] rounded-xl bg-muted/35 p-2"><header className="border-b border-border px-2 pb-3"><p className="text-[10px] font-extrabold uppercase text-muted-foreground">{day.toLocaleDateString("pt-BR", { weekday: "short" })}</p><p className="mt-1 text-lg font-extrabold">{day.getDate()}</p></header><div className="space-y-2 pt-2">{dayEvents.map((event) => <article key={event.id} className="rounded-lg border border-border bg-card p-2 shadow-sm"><p className="text-[10px] font-extrabold text-primary">{new Date(event.startsAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p><p className="mt-1 text-xs font-extrabold leading-4">{event.title}</p><p className="mt-1 text-[10px] text-muted-foreground">{event.cityName}</p>{event.location && <p className="mt-1 truncate text-[10px] text-muted-foreground">{event.location}</p>}</article>)}</div></section>; })}</div></div> : <div className="space-y-3">{events.length ? events.map((event) => <article key={event.id} className="rounded-2xl border border-border bg-card p-5 sm:p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="flex gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary"><CalendarDays size={18} /></div><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-extrabold">{event.title}</h2><StatusPill tone={event.status === "pending" ? "warning" : "success"}>{event.status === "pending" ? "Pendente" : event.status}</StatusPill></div><p className="mt-2 text-xs font-bold">{new Date(event.startsAt).toLocaleString("pt-BR")} — {new Date(event.endsAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p><p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><MapPin size={13} /> {event.cityName} · {event.regionName}{event.location ? ` · ${event.location}` : ""}</p>{event.description && <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{event.description}</p>}</div></div>{event.googleHtmlLink && <a href={event.googleHtmlLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-extrabold hover:bg-muted">Abrir Google Calendar <ExternalLink size={13} /></a>}</div></article>) : <div className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Nenhum evento da agenda foi encontrado para o seu território.</div>}</div>}
+     {view === "week" ? (
+       <div className="overflow-x-auto rounded-2xl border border-border bg-card p-3">
+         <div className="grid min-w-[980px] grid-cols-7 gap-2">
+           {days.map((day) => {
+             const key = dateKey(day);
+             const dayEvents = weekEvents.filter((event) => eventDateKey(event) === key);
+             return <section key={key} className="min-h-[430px] rounded-xl bg-muted/35 p-2">
+               <header className="border-b border-border px-2 pb-3"><p className="text-[10px] font-extrabold uppercase text-muted-foreground">{day.toLocaleDateString("pt-BR", { weekday: "short" })}</p><p className="mt-1 text-lg font-extrabold">{day.getDate()}</p></header>
+               <div className="space-y-2 pt-2">{dayEvents.map((event) => <article key={event.id} className="rounded-lg border border-border bg-card p-2 shadow-sm">
+                 <div className="flex items-start justify-between gap-2">
+                   <div><p className="text-[10px] font-extrabold text-primary">{new Date(event.startsAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p><p className="mt-1 text-xs font-extrabold leading-4">{event.title}</p></div>
+                   {can("calendar:manage") && <button onClick={() => void deleteEvent(event)} disabled={deletingEventId === event.id} className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50" aria-label={`Excluir ${event.title}`} data-testid={`button-delete-event-${event.id}`}><Trash2 size={13} /></button>}
+                 </div>
+                 <p className="mt-1 text-[10px] text-muted-foreground">{event.cityName}</p>{event.location && <p className="mt-1 truncate text-[10px] text-muted-foreground">{event.location}</p>}
+               </article>)}</div>
+             </section>;
+           })}
+         </div>
+       </div>
+     ) : <div className="space-y-3">{events.length ? events.map((event) => <article key={event.id} className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+         <div className="flex gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-secondary text-primary"><CalendarDays size={18} /></div><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-extrabold">{event.title}</h2><StatusPill tone={event.status === "pending" ? "warning" : "success"}>{event.status === "pending" ? "Pendente" : event.status}</StatusPill></div><p className="mt-2 text-xs font-bold">{new Date(event.startsAt).toLocaleString("pt-BR")} — {new Date(event.endsAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p><p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><MapPin size={13} /> {event.cityName} · {event.regionName}{event.location ? ` · ${event.location}` : ""}</p>{event.description && <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">{event.description}</p>}</div></div>
+         <div className="flex flex-wrap gap-2">{event.googleHtmlLink && <a href={event.googleHtmlLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-extrabold hover:bg-muted">Abrir Google Calendar <ExternalLink size={13} /></a>}{can("calendar:manage") && <button onClick={() => void deleteEvent(event)} disabled={deletingEventId === event.id} className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-xs font-extrabold text-red-700 hover:bg-red-50 disabled:opacity-50" data-testid={`button-delete-event-${event.id}`}><Trash2 size={13} /> {deletingEventId === event.id ? "Excluindo…" : "Excluir"}</button>}</div>
+       </div>
+     </article>) : <div className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Nenhum evento da agenda foi encontrado para o seu território.</div>}</div>}
      {can("calendar:manage") && <section className="mt-5 rounded-2xl border border-[#b8d6e8] bg-[#eaf2f8] p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="flex items-center gap-2 text-sm font-extrabold text-primary"><Link2 size={16} /> Compartilhar semana com Edson Albertassi</p><p className="mt-1 text-xs text-slate-600">Crie um link somente para a semana selecionada na visão de calendário.</p></div><div className="flex flex-wrap gap-2"><button onClick={() => void createShareLink()} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-xs font-extrabold text-primary-foreground">Gerar link da semana</button><button onClick={() => setShowWhatsAppShare(true)} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 py-2.5 text-xs font-extrabold text-emerald-800"><MessageCircle size={14} /> Enviar agenda da semana</button></div></div>{shareLink && <div className="mt-4 flex flex-col gap-2 sm:flex-row"><input readOnly value={shareLink} className="h-10 min-w-0 flex-1 rounded-lg border border-[#b8d6e8] bg-white px-3 text-xs text-slate-600" /><button onClick={() => void copyShareLink()} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-primary bg-white px-4 text-xs font-extrabold text-primary"><Copy size={14} /> Copiar link</button></div>}{shareMessage && <p className="mt-2 text-xs font-bold text-primary">{shareMessage}</p>}</section>}
       {showCreate && <CreateEventDialog cities={cities.data ?? []} onClose={() => setShowCreate(false)} onCreated={(payload) => { setEvents((current) => [...current, payload].sort((a, b) => a.startsAt.localeCompare(b.startsAt))); setShowCreate(false); setNotice(null); if (payload.notification) setAutomaticNotification(payload.notification); }} />}
       {showWhatsAppShare && <ShareAgendaDialog weekStart={weekStart} weekLabel={weekLabel(weekStart)} onClose={() => setShowWhatsAppShare(false)} onAutomaticNotification={setAutomaticNotification} />}

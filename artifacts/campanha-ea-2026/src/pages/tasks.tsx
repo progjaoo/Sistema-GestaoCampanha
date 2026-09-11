@@ -363,6 +363,19 @@ export default function TasksPage() {
     await updateStatus(task, status);
   }
 
+  async function deleteTask(task: Pick<Task, "id" | "boardId">) {
+    if (!can("tasks:delete") || !window.confirm("Excluir esta tarefa permanentemente?")) return;
+    try {
+      await json(await authFetch(`/api/tasks/${task.id}`, { method: "DELETE" }));
+      setSelectedTaskId((current) => current === task.id ? null : current);
+      setTasks((current) => current.filter((item) => item.id !== task.id));
+      await loadTasks(selectedBoardId);
+      await loadBoardDetail(task.boardId);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível excluir a tarefa.");
+    }
+  }
+
   async function toggleBoardArchived(board: Board) {
     if (!can("boards:archive")) return;
     const action = board.archived ? "restaurar" : "arquivar";
@@ -498,7 +511,7 @@ export default function TasksPage() {
             return <section key={column.key} onDragOver={(event) => event.preventDefault()} onDrop={() => void dropTask(column.key)} className={`min-h-[430px] w-[85vw] shrink-0 snap-center sm:w-auto rounded-2xl border border-border bg-muted/20 p-3 transition ${draggingTaskId ? "ring-1 ring-primary/20" : ""}`} data-testid={`kanban-column-${column.key}`}>
               <div className="mb-3 flex items-center justify-between px-2"><div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${column.tone}`} /><h2 className="text-sm font-extrabold">{column.label}</h2></div><span className="font-mono text-xs text-muted-foreground" data-testid={`column-count-${column.key}`}>{items.length}</span></div>
               <div className="min-h-[370px] space-y-3">
-                {loadingTasks ? <LoadingRows count={2} /> : items.length ? items.map((task) => <TaskCard key={task.id} task={task} canUpdate={can("tasks:update")} canShare={can("tasks:share")} dragging={draggingTaskId === task.id} onOpen={() => setSelectedTaskId(task.id)} onDragStart={() => setDraggingTaskId(task.id)} onDragEnd={() => setDraggingTaskId(null)} onStatusChange={(status) => void updateStatus(task, status)} onShare={() => setShareTask(task)} />) : <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground">Nenhuma tarefa nesta etapa.</div>}
+                 {loadingTasks ? <LoadingRows count={2} /> : items.length ? items.map((task) => <TaskCard key={task.id} task={task} canUpdate={can("tasks:update")} canDelete={can("tasks:delete")} canShare={can("tasks:share")} dragging={draggingTaskId === task.id} onOpen={() => setSelectedTaskId(task.id)} onDragStart={() => setDraggingTaskId(task.id)} onDragEnd={() => setDraggingTaskId(null)} onStatusChange={(status) => void updateStatus(task, status)} onDelete={() => void deleteTask(task)} onShare={() => setShareTask(task)} />) : <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground">Nenhuma tarefa nesta etapa.</div>}
               </div>
             </section>;
           })}
@@ -508,12 +521,12 @@ export default function TasksPage() {
 
     {showBoardForm && <BoardFormDialog board={editingBoard} cities={cities.data ?? []} onClose={() => setShowBoardForm(false)} onSaved={async (saved) => { setShowBoardForm(false); await loadBoards(false, saved.id); setShowArchived(false); setSelectedBoardId(saved.id); }} />}
     {showTaskForm && selectedBoard && <CreateTaskDialog board={selectedBoard} cities={cities.data ?? []} onClose={() => setShowTaskForm(false)} onCreated={async (task) => { setShowTaskForm(false); setSelectedTaskId(task.id); await loadTasks(selectedBoard.id); await loadBoardDetail(selectedBoard.id); }} />}
-    {selectedTaskId && <TaskDetailDialog taskId={selectedTaskId} boards={boards} onClose={() => setSelectedTaskId(null)} onChanged={async (task) => { await loadTasks(task.boardId); await loadBoardDetail(task.boardId); if (task.boardId !== selectedBoardId) setSelectedBoardId(task.boardId); }} onShare={(task) => setShareTask(task)} />}
+    {selectedTaskId && <TaskDetailDialog taskId={selectedTaskId} boards={boards} onClose={() => setSelectedTaskId(null)} onChanged={async (task) => { await loadTasks(task.boardId); await loadBoardDetail(task.boardId); if (task.boardId !== selectedBoardId) setSelectedBoardId(task.boardId); }} onDelete={(task) => void deleteTask(task)} onShare={(task) => setShareTask(task)} />}
     {shareTask && <ShareTaskDialog task={shareTask} onClose={() => setShareTask(null)} />}
   </OpsShell>;
 }
 
-function TaskCard({ task, canUpdate, canShare, dragging, onOpen, onDragStart, onDragEnd, onStatusChange, onShare }: { task: Task; canUpdate: boolean; canShare: boolean; dragging: boolean; onOpen: () => void; onDragStart: () => void; onDragEnd: () => void; onStatusChange: (status: string) => void; onShare: () => void }) {
+function TaskCard({ task, canUpdate, canDelete, canShare, dragging, onOpen, onDragStart, onDragEnd, onStatusChange, onDelete, onShare }: { task: Task; canUpdate: boolean; canDelete: boolean; canShare: boolean; dragging: boolean; onOpen: () => void; onDragStart: () => void; onDragEnd: () => void; onStatusChange: (status: string) => void; onDelete: () => void; onShare: () => void }) {
   return <article draggable={canUpdate} onDragStart={onDragStart} onDragEnd={onDragEnd} className={`cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition active:cursor-grabbing ${dragging ? "rotate-1 opacity-50" : ""}`} data-testid={`task-card-${task.id}`}>
     <button onClick={onOpen} className="block w-full text-left" data-testid={`button-open-task-${task.id}`}>
       <div className="flex items-start justify-between gap-2"><div className="flex items-center gap-2"><GripVertical size={15} className="text-muted-foreground" /><StatusPill tone={priorityTone(task.priority)}>{priorityLabels[task.priority] ?? task.priority}</StatusPill></div><span className="font-mono text-[10px] text-muted-foreground">#{task.id}</span></div>
@@ -521,7 +534,7 @@ function TaskCard({ task, canUpdate, canShare, dragging, onOpen, onDragStart, on
       {task.description && <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{task.description}</p>}
       <div className="mt-4 space-y-2 border-t border-border pt-3 text-[11px] text-muted-foreground">{task.cityName && <div className="font-bold text-foreground">{task.cityName}{task.regionName ? <span className="font-normal text-muted-foreground"> · {task.regionName}</span> : null}</div>}{task.leadershipName && <div className="flex items-center gap-1.5"><CircleUserRound size={12} />{task.leadershipName}{task.leadershipContact ? <span className="text-emerald-700">· {task.leadershipContact}</span> : <span className="text-amber-700">· sem telefone</span>}</div>}{task.assigneeName && <div className="flex items-center gap-1.5"><UsersRound size={12} />Responsável: {task.assigneeName}</div>}{task.dueAt && <div className="flex items-center gap-1.5"><CalendarClock size={12} />{formatDate(task.dueAt)}</div>}</div>
     </button>
-    <div className="mt-4 flex flex-wrap gap-2">{canUpdate && <select value={task.status} onChange={(event) => onStatusChange(event.target.value)} onClick={(event) => event.stopPropagation()} className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-[10px] font-bold" aria-label={`Status da tarefa ${task.title}`} data-testid={`select-task-status-${task.id}`}><option value="todo">A fazer</option><option value="in_progress">Em andamento</option><option value="blocked">Bloqueada</option><option value="done">Concluída</option></select>}{canShare && <button onClick={onShare} className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-extrabold text-emerald-800" title="Enviar pelo WhatsApp pessoal" data-testid={`button-share-task-${task.id}`}><MessageCircle size={13} /> Enviar</button>}</div>
+     <div className="mt-4 flex flex-wrap gap-2">{canUpdate && <select value={task.status} onChange={(event) => onStatusChange(event.target.value)} onClick={(event) => event.stopPropagation()} className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-[10px] font-bold" aria-label={`Status da tarefa ${task.title}`} data-testid={`select-task-status-${task.id}`}><option value="todo">A fazer</option><option value="in_progress">Em andamento</option><option value="blocked">Bloqueada</option><option value="done">Concluída</option></select>}{canShare && <button onClick={onShare} className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-extrabold text-emerald-800" title="Enviar pelo WhatsApp pessoal" data-testid={`button-share-task-${task.id}`}><MessageCircle size={13} /> Enviar</button>}{canDelete && <button onClick={onDelete} className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 text-[10px] font-extrabold text-red-700" title="Excluir tarefa" data-testid={`button-delete-task-${task.id}`}><Trash2 size={13} /> Excluir</button>}</div>
   </article>;
 }
 
@@ -588,7 +601,7 @@ function CreateTaskDialog({ board, cities, onClose, onCreated }: { board: Board;
   </ModalShell>;
 }
 
-function TaskDetailDialog({ taskId, boards, onClose, onChanged, onShare }: { taskId: number; boards: Board[]; onClose: () => void; onChanged: (task: Task) => Promise<void>; onShare: (task: Task) => void }) {
+function TaskDetailDialog({ taskId, boards, onClose, onChanged, onDelete, onShare }: { taskId: number; boards: Board[]; onClose: () => void; onChanged: (task: Task) => Promise<void>; onDelete: (task: Pick<Task, "id" | "boardId">) => void; onShare: (task: Task) => void }) {
   const { can } = useAuth();
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [memberOptions, setMemberOptions] = useState<MemberOption[]>([]);
@@ -684,7 +697,7 @@ function TaskDetailDialog({ taskId, boards, onClose, onChanged, onShare }: { tas
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,.9fr)]">
       <div className="space-y-5">
         <form onSubmit={updateTask} className="space-y-4 rounded-xl border border-border bg-background/50 p-4">
-          <div className="flex items-center justify-between"><div><p className="mono-label text-primary">Campos da operação</p><p className="mt-1 text-xs text-muted-foreground">Atualize a tarefa sem sair do quadro.</p></div>{can("tasks:share") && <button type="button" onClick={() => onShare(detail)} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-extrabold text-emerald-800" data-testid={`button-detail-share-${detail.id}`}><Send size={13} /> Compartilhar</button>}</div>
+           <div className="flex items-center justify-between gap-2"><div><p className="mono-label text-primary">Campos da operação</p><p className="mt-1 text-xs text-muted-foreground">Atualize a tarefa sem sair do quadro.</p></div><div className="flex flex-wrap justify-end gap-2">{can("tasks:share") && <button type="button" onClick={() => onShare(detail)} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-extrabold text-emerald-800" data-testid={`button-detail-share-${detail.id}`}><Send size={13} /> Compartilhar</button>}{can("tasks:delete") && <button type="button" onClick={() => onDelete(detail)} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-extrabold text-red-700" data-testid={`button-detail-delete-${detail.id}`}><Trash2 size={13} /> Excluir</button>}</div></div>
           <FieldLabel label="Título"><input disabled={!can("tasks:update")} required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="field" data-testid="input-detail-title" /></FieldLabel>
           <FieldLabel label="Descrição"><textarea disabled={!can("tasks:update")} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="min-h-24 w-full rounded-lg border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" data-testid="input-detail-description" /></FieldLabel>
           <div className="grid gap-4 sm:grid-cols-2"><FieldLabel label="Status"><select disabled={!can("tasks:update")} value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })} className="field" data-testid="select-detail-status"><option value="todo">A fazer</option><option value="in_progress">Em andamento</option><option value="blocked">Bloqueada</option><option value="done">Concluída</option></select></FieldLabel><FieldLabel label="Prioridade"><select disabled={!can("tasks:update")} value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} className="field" data-testid="select-detail-priority"><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></FieldLabel></div>

@@ -301,19 +301,6 @@ export const ListLeadershipsResponse = zod.object({
 
 
 /**
- * @summary List federal deputies with dynamic support totals
- */
-export const ListFederalDeputiesResponseItem = zod.object({
-  "id": zod.number().int(),
-  "name": zod.string(),
-  "isAlliance": zod.boolean(),
-  "leadershipCount": zod.number().int(),
-  "cityCount": zod.number().int()
-})
-export const ListFederalDeputiesResponse = zod.array(ListFederalDeputiesResponseItem)
-
-
-/**
  * @summary Create a leadership record
  */
 
@@ -356,6 +343,19 @@ export const CreateLeadershipResponse = zod.object({
   "sourceRow": zod.number().int(),
   "needsReview": zod.boolean()
 })
+
+
+/**
+ * @summary List federal deputies with dynamic support totals
+ */
+export const ListFederalDeputiesResponseItem = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "isAlliance": zod.boolean(),
+  "leadershipCount": zod.number().int(),
+  "cityCount": zod.number().int()
+})
+export const ListFederalDeputiesResponse = zod.array(ListFederalDeputiesResponseItem)
 
 
 /**

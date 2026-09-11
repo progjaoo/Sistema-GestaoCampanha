@@ -1463,6 +1463,42 @@ router.get(
   },
 );
 
+router.delete(
+  "/calendar/events/:id",
+  requirePermission("calendar:manage"),
+  async (req, res): Promise<void> => {
+    const id = Number(req.params.id);
+    const [event] = await db
+      .select({
+        id: campaignCalendarEventsTable.id,
+        googleEventId: campaignCalendarEventsTable.googleEventId,
+      })
+      .from(campaignCalendarEventsTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId))
+      .where(and(
+        eq(campaignCalendarEventsTable.id, id),
+        eq(campaignCalendarEventsTable.source, "google"),
+        cityScopeCondition(req.auth!),
+      ));
+    if (!event) {
+      res.status(404).json({ error: "Evento não encontrado." });
+      return;
+    }
+
+    const googleResponse = await googleCalendarRequest(
+      `/calendar/v3/calendars/primary/events/${encodeURIComponent(event.googleEventId)}?sendUpdates=all`,
+      { method: "DELETE" },
+    );
+    if (!googleResponse.ok && googleResponse.status !== 404) {
+      res.status(502).json({ error: "O Google Calendar não aceitou a exclusão do evento." });
+      return;
+    }
+
+    await db.delete(campaignCalendarEventsTable).where(eq(campaignCalendarEventsTable.id, event.id));
+    res.status(204).send();
+  },
+);
+
 router.get(
   "/calendar/sync-status",
   requirePermission("calendar:view"),

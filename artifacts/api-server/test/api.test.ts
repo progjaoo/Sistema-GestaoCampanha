@@ -469,6 +469,17 @@ test("confirma RBAC, agenda, aviso, compartilhamento e escopo operacional", asyn
     assert.ok(publicBody.events.some((event) => event.id === createdEvent.body.id));
     assert.ok(publicBody.events.some((event) => event.id === syncRow.id));
     assert.ok(publicBody.events.every((event) => event.id !== outsideSyncRow.id));
+
+    const deletedEvent = await request(`/api/calendar/events/${createdEvent.body.id}`, admin, {
+      method: "DELETE",
+    });
+    assert.equal(deletedEvent.status, 204);
+    assert.equal(calendarCalls.at(-1)?.init?.method, "DELETE");
+
+    const deletedTask = await request(`/api/tasks/${createdTask.body.id}`, coordinator, {
+      method: "DELETE",
+    });
+    assert.equal(deletedTask.status, 204);
   } finally {
     if (!existingCoordinatorPermission) {
       await db

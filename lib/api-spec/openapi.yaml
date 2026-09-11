@@ -260,20 +260,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LeadershipList"
-  /deputies:
-    get:
-      operationId: listFederalDeputies
-      tags: [campaign]
-      summary: List federal deputies with dynamic support totals
-      responses:
-        "200":
-          description: Federal deputy support list
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/FederalDeputy"
     post:
       operationId: createLeadership
       tags: [leaderships]
@@ -297,6 +283,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /deputies:
+    get:
+      operationId: listFederalDeputies
+      tags: [campaign]
+      summary: List federal deputies with dynamic support totals
+      responses:
+        "200":
+          description: Federal deputy support list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FederalDeputy"
   /leaderships/{id}:
     get:
       operationId: getLeadership
