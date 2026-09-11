@@ -28,4 +28,5 @@ export interface LeadershipUpdate {
   originalFederalDeputy?: string | null;
   /** @nullable */
   religion?: string | null;
+  needsReview?: boolean;
 }

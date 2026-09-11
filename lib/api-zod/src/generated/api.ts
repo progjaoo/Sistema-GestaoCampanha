@@ -228,7 +228,8 @@ export const UpdateLeadershipBody = zod.object({
   "federalDeputyId": zod.number().int().nullish(),
   "allianceStatus": zod.string().nullish(),
   "originalFederalDeputy": zod.string().nullish(),
-  "religion": zod.string().nullish()
+  "religion": zod.string().nullish(),
+  "needsReview": zod.boolean().optional()
 })
 
 export const UpdateLeadershipResponse = zod.object({

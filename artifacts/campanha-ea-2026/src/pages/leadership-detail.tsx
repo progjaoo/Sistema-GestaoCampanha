@@ -1,0 +1,38 @@
+import { useEffect, useState } from 'react';
+import { ArrowLeft, Check, ExternalLink, FileSpreadsheet, Pencil, Save, ShieldAlert } from 'lucide-react';
+import { Link, useParams } from 'wouter';
+import { getGetLeadershipQueryKey, useGetLeadership, useUpdateLeadership } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from '@/components/ops-shell';
+
+export default function LeadershipDetailPage() {
+  const params = useParams<{ id: string }>();
+  const id = Number(params.id);
+  const queryClient = useQueryClient();
+  const query = useGetLeadership(id, { query: { queryKey: getGetLeadershipQueryKey(id) } });
+  const update = useUpdateLeadership();
+  const [editing, setEditing] = useState(false);
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [name, setName] = useState('');
+  const [contact, setContact] = useState('');
+  useEffect(() => { if (query.data) { setName(query.data.name); setContact(query.data.leadershipContact ?? ''); } }, [query.data]);
+  if (query.isLoading) return <OpsShell><LoadingRows count={3} /></OpsShell>;
+  if (query.isError || !query.data) return <OpsShell><ErrorState onRetry={() => void query.refetch()} label="Registro não encontrado ou indisponível." /></OpsShell>;
+  const item = query.data;
+  const save = () => update.mutate({ id, data: { name, leadershipContact: contact || null } }, { onSuccess: (saved) => { queryClient.setQueryData(getGetLeadershipQueryKey(id), saved); setEditing(false); } });
+  return <OpsShell>
+    <Link href="/liderancas" className="mb-6 inline-flex items-center gap-2 text-xs font-bold text-muted-foreground hover:text-foreground" data-testid="link-back-leaderships"><ArrowLeft size={14} /> Voltar para lideranças</Link>
+    <PageHeading eyebrow={`Registro #${String(item.id).padStart(4, '0')} / detalhe`} title={item.name} description={`${item.cityName}, ${item.regionName} · fonte preservada para conferência da equipe.`} action={<div className="flex gap-2">{item.needsReview && <StatusPill tone="warning">Revisão pendente</StatusPill>}<button onClick={() => setEditing(!editing)} className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-3 text-xs font-extrabold hover:bg-muted" data-testid="button-toggle-edit"><Pencil size={14} /> {editing ? 'Cancelar' : 'Editar'}</button></div>} />
+    <div className="grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
+      <section className="rounded-2xl border border-border bg-card p-5 sm:p-7" data-testid="leadership-profile">
+        <div className="mb-6 flex items-center justify-between border-b border-border pb-5"><div><p className="mono-label text-primary">Dados de contato</p><h2 className="mt-1 text-lg font-extrabold">Identificação da liderança</h2></div><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-secondary text-sm font-extrabold text-secondary-foreground">{item.name.split(' ').map((part) => part[0]).slice(0, 2).join('')}</div></div>
+        {editing ? <div className="space-y-4"><label className="block"><span className="mb-1.5 block text-xs font-bold">Nome</span><input value={name} onChange={(e) => setName(e.target.value)} className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" data-testid="input-edit-name" /></label><label className="block"><span className="mb-1.5 block text-xs font-bold">Contato</span><input value={contact} onChange={(e) => setContact(e.target.value)} className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" data-testid="input-edit-contact" /></label><button onClick={save} disabled={update.isPending} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground disabled:opacity-60" data-testid="button-save-leadership"><Save size={14} /> {update.isPending ? 'Salvando…' : 'Salvar alterações'}</button></div> : <div className="grid gap-x-6 gap-y-6 sm:grid-cols-2">{[['Contato da liderança', item.leadershipContact], ['Região interna', item.internalRegion], ['Articulador', item.articulatorName], ['Coordenador', item.coordinatorName], ['Contato coordenação', item.coordinatorContact], ['Religião', item.religion]].map(([label, value]) => <div key={String(label)}><p className="mono-label text-muted-foreground">{label}</p><p className="mt-1.5 text-sm font-bold">{value || 'Não informado'}</p></div>)}</div>}
+      </section>
+      <div className="space-y-5">
+        <section className="rounded-2xl border border-border bg-card p-5 sm:p-7" data-testid="territory-card"><p className="mono-label text-primary">Vínculo territorial</p><h2 className="mt-1 text-lg font-extrabold">{item.cityName}</h2><p className="mt-1 text-sm text-muted-foreground">{item.regionName}</p><div className="mt-6 space-y-3 border-t border-border pt-5"><div className="flex justify-between text-xs"><span className="text-muted-foreground">Deputado federal</span><span className="font-bold">{item.federalDeputyName || 'Não informado'}</span></div><div className="flex justify-between text-xs"><span className="text-muted-foreground">Status de aliança</span><span className="font-bold">{item.allianceStatus || 'Não informado'}</span></div></div></section>
+        <section className="rounded-2xl border border-border bg-secondary/60 p-5 sm:p-7" data-testid="source-trace-card"><div className="flex items-start justify-between"><div><p className="mono-label text-secondary-foreground/55">Trilha de origem</p><h2 className="mt-1 text-lg font-extrabold text-secondary-foreground">Fonte preservada</h2></div><FileSpreadsheet size={19} className="text-secondary-foreground/60" /></div><div className="mt-6 rounded-xl border border-secondary-foreground/10 bg-card/50 p-4"><p className="text-xs text-muted-foreground">Planilha de origem</p><p className="mt-1 text-sm font-extrabold text-secondary-foreground">{item.sourceSheet}</p><p className="mt-3 text-xs text-muted-foreground">Linha de origem</p><p className="mt-1 font-mono text-sm font-bold text-secondary-foreground">#{item.sourceRow}</p></div><p className="mt-4 flex items-center gap-2 text-[11px] leading-5 text-secondary-foreground/65"><ExternalLink size={12} /> Use esta referência ao corrigir a fonte original.</p></section>
+      </div>
+    </div>
+    {item.needsReview && !reviewConfirmed && <section className="mt-5 flex gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950 sm:p-6" data-testid="review-alert"><ShieldAlert size={20} className="mt-0.5 shrink-0 text-amber-700" /><div><p className="text-sm font-extrabold">Este registro pede conferência</p><p className="mt-1 text-xs leading-5 text-amber-800">Compare os campos acima com a linha original antes de confirmar a correção. Quando a revisão estiver concluída, a equipe pode atualizar o registro sem perder esta trilha.</p><button onClick={() => update.mutate({ id, data: { name: item.name, needsReview: false } }, { onSuccess: (saved) => { setReviewConfirmed(true); queryClient.setQueryData(getGetLeadershipQueryKey(id), saved); } })} disabled={update.isPending} className="mt-3 inline-flex items-center gap-2 text-xs font-extrabold text-amber-900 hover:underline disabled:opacity-60" data-testid="button-mark-reviewed"><Check size={14} /> {update.isPending ? 'Registrando conferência…' : 'Confirmar dados conferidos'}</button></div></section>}
+  </OpsShell>;
+}

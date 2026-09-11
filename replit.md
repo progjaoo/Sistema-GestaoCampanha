@@ -1,6 +1,6 @@
-# [Project name]
+# Gestão da Campanha EA 2026
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Painel mobile-first para consultar a cobertura territorial e a base de lideranças da campanha, mantendo a origem dos dados e pendências de revisão.
 
 ## Run & Operate
 
@@ -22,15 +22,23 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `lib/db/src/schema/campaign.ts` — tabelas relacionais da campanha e fila de revisão.
+- `lib/db/seed-data/` — CSVs de origem versionados para a carga inicial.
+- `scripts/src/seed-campaign.ts` — seed idempotente com validação das contagens de origem.
+- `artifacts/api-server/src/routes/campaign.ts` — endpoints de cobertura, lideranças e revisão.
+- `lib/api-spec/openapi.yaml` — contrato único da API; execute codegen após alterações.
+- `artifacts/campanha-ea-2026/src/` — painel web e páginas mobile-first.
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- A carga usa as chaves naturais dos catálogos e `Aba_Origem + Linha_Origem` para deduplicar lideranças sem perder rastreabilidade.
+- As linhas incompletas da fonte são preservadas; nomes ausentes aparecem como “Sem identificação” apenas nas respostas de leitura.
+- `needsReview` é marcado para vínculos `REVISAR`, sem tentar inferir o deputado federal.
+- A visão macro é agregada dinamicamente a partir das tabelas, sem persistir os totais gravados nos CSVs.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+O painel apresenta totais de regiões, cidades e lideranças, distribuição por região e deputado, busca e filtros paginados de lideranças, detalhe com trilha de origem e uma fila de revisão para os registros ambíguos.
 
 ## User preferences
 

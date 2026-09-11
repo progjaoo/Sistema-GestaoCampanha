@@ -1,0 +1,1 @@
+- [Campaign import data quality](campaign-import-data-quality.md) — preserve incomplete/ambiguous rows and require explicit review decisions.

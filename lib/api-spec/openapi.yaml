@@ -377,6 +377,8 @@ components:
           type: ["string", "null"]
         religion:
           type: ["string", "null"]
+        needsReview:
+          type: boolean
     LeadershipList:
       type: object
       properties:
