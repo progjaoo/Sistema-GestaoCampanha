@@ -41,6 +41,12 @@ import type {
   ListLeadershipsParams,
   ListReviewIssuesParams,
   Logout200,
+  Material,
+  MaterialInput,
+  MaterialUpdate,
+  MaterialWithdrawal,
+  MaterialWithdrawalInput,
+  MaterialWithdrawalUpdate,
   Region,
   ReviewIssue
 } from './api.schemas';
@@ -1545,4 +1551,737 @@ export function useListReviewIssues<TData = Awaited<ReturnType<typeof listReview
 
 
 
+
+export const getListMaterialsUrl = () => {
+
+
+
+
+  return `/api/materials`
+}
+
+/**
+ * @summary List active materials in the catalog
+ */
+export const listMaterials = async ( options?: Parameters<typeof customFetch>[1]): Promise<Material[]> => {
+
+  return customFetch<Material[]>(getListMaterialsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMaterialsQueryKey = () => {
+    return [
+    `/api/materials`
+    ] as const;
+    }
+
+
+export const getListMaterialsQueryOptions = <TData = Awaited<ReturnType<typeof listMaterials>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMaterials>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMaterialsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMaterials>>> = ({ signal }) => listMaterials({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMaterials>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMaterialsQueryResult = NonNullable<Awaited<ReturnType<typeof listMaterials>>>
+export type ListMaterialsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List active materials in the catalog
+ */
+
+export function useListMaterials<TData = Awaited<ReturnType<typeof listMaterials>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMaterials>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMaterialsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateMaterialUrl = () => {
+
+
+
+
+  return `/api/materials`
+}
+
+/**
+ * @summary Add a material to the catalog
+ */
+export const createMaterial = async (materialInput: MaterialInput, options?: Parameters<typeof customFetch>[1]): Promise<Material> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Material>(getCreateMaterialUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(materialInput)
+  }
+);}
+
+
+
+
+
+export const getCreateMaterialMutationKey = () => ['createMaterial'] as const;
+
+export const getCreateMaterialMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMaterial>>, TError,CreateMaterialMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMaterial>>, TError,CreateMaterialMutationVariables, TContext> => {
+
+const mutationKey = getCreateMaterialMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMaterial>>, CreateMaterialMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createMaterial(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMaterialMutationResult = NonNullable<Awaited<ReturnType<typeof createMaterial>>>
+    export type CreateMaterialMutationBody = BodyType<MaterialInput>
+    export type CreateMaterialMutationError = ErrorType<unknown>
+    export type CreateMaterialMutationVariables = {data: BodyType<MaterialInput>}
+
+    /**
+ * @summary Add a material to the catalog
+ */
+export const useCreateMaterial = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMaterial>>, TError,CreateMaterialMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMaterial>>,
+        TError,
+        CreateMaterialMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateMaterialMutationOptions(options));
+    }
+
+export const getUpdateMaterialUrl = (id: number,) => {
+
+
+
+
+  return `/api/materials/${id}`
+}
+
+/**
+ * @summary Update or deactivate a catalog material
+ */
+export const updateMaterial = async (id: number,
+    materialUpdate: MaterialUpdate, options?: Parameters<typeof customFetch>[1]): Promise<Material> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<Material>(getUpdateMaterialUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(materialUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateMaterialMutationKey = () => ['updateMaterial'] as const;
+
+export const getUpdateMaterialMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMaterial>>, TError,UpdateMaterialMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMaterial>>, TError,UpdateMaterialMutationVariables, TContext> => {
+
+const mutationKey = getUpdateMaterialMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMaterial>>, UpdateMaterialMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateMaterial(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMaterialMutationResult = NonNullable<Awaited<ReturnType<typeof updateMaterial>>>
+    export type UpdateMaterialMutationBody = BodyType<MaterialUpdate>
+    export type UpdateMaterialMutationError = ErrorType<unknown>
+    export type UpdateMaterialMutationVariables = {id: number;data: BodyType<MaterialUpdate>}
+
+    /**
+ * @summary Update or deactivate a catalog material
+ */
+export const useUpdateMaterial = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMaterial>>, TError,UpdateMaterialMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMaterial>>,
+        TError,
+        UpdateMaterialMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateMaterialMutationOptions(options));
+    }
+
+export const getDeleteMaterialUrl = (id: number,) => {
+
+
+
+
+  return `/api/materials/${id}`
+}
+
+/**
+ * @summary Deactivate a catalog material
+ */
+export const deleteMaterial = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteMaterialUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteMaterialMutationKey = () => ['deleteMaterial'] as const;
+
+export const getDeleteMaterialMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMaterial>>, TError,DeleteMaterialMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMaterial>>, TError,DeleteMaterialMutationVariables, TContext> => {
+
+const mutationKey = getDeleteMaterialMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMaterial>>, DeleteMaterialMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteMaterial(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMaterialMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMaterial>>>
+
+    export type DeleteMaterialMutationError = ErrorType<unknown>
+    export type DeleteMaterialMutationVariables = {id: number}
+
+    /**
+ * @summary Deactivate a catalog material
+ */
+export const useDeleteMaterial = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMaterial>>, TError,DeleteMaterialMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMaterial>>,
+        TError,
+        DeleteMaterialMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteMaterialMutationOptions(options));
+    }
+
+export const getListMaterialWithdrawalsUrl = () => {
+
+
+
+
+  return `/api/material-withdrawals`
+}
+
+/**
+ * @summary List material withdrawals in the authorized territory
+ */
+export const listMaterialWithdrawals = async ( options?: Parameters<typeof customFetch>[1]): Promise<MaterialWithdrawal[]> => {
+
+  return customFetch<MaterialWithdrawal[]>(getListMaterialWithdrawalsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMaterialWithdrawalsQueryKey = () => {
+    return [
+    `/api/material-withdrawals`
+    ] as const;
+    }
+
+
+export const getListMaterialWithdrawalsQueryOptions = <TData = Awaited<ReturnType<typeof listMaterialWithdrawals>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMaterialWithdrawals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMaterialWithdrawalsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMaterialWithdrawals>>> = ({ signal }) => listMaterialWithdrawals({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMaterialWithdrawals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMaterialWithdrawalsQueryResult = NonNullable<Awaited<ReturnType<typeof listMaterialWithdrawals>>>
+export type ListMaterialWithdrawalsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List material withdrawals in the authorized territory
+ */
+
+export function useListMaterialWithdrawals<TData = Awaited<ReturnType<typeof listMaterialWithdrawals>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMaterialWithdrawals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMaterialWithdrawalsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateMaterialWithdrawalUrl = () => {
+
+
+
+
+  return `/api/material-withdrawals`
+}
+
+/**
+ * @summary Create a city material withdrawal
+ */
+export const createMaterialWithdrawal = async (materialWithdrawalInput: MaterialWithdrawalInput, options?: Parameters<typeof customFetch>[1]): Promise<MaterialWithdrawal> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MaterialWithdrawal>(getCreateMaterialWithdrawalUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(materialWithdrawalInput)
+  }
+);}
+
+
+
+
+
+export const getCreateMaterialWithdrawalMutationKey = () => ['createMaterialWithdrawal'] as const;
+
+export const getCreateMaterialWithdrawalMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMaterialWithdrawal>>, TError,CreateMaterialWithdrawalMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMaterialWithdrawal>>, TError,CreateMaterialWithdrawalMutationVariables, TContext> => {
+
+const mutationKey = getCreateMaterialWithdrawalMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMaterialWithdrawal>>, CreateMaterialWithdrawalMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createMaterialWithdrawal(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMaterialWithdrawalMutationResult = NonNullable<Awaited<ReturnType<typeof createMaterialWithdrawal>>>
+    export type CreateMaterialWithdrawalMutationBody = BodyType<MaterialWithdrawalInput>
+    export type CreateMaterialWithdrawalMutationError = ErrorType<unknown>
+    export type CreateMaterialWithdrawalMutationVariables = {data: BodyType<MaterialWithdrawalInput>}
+
+    /**
+ * @summary Create a city material withdrawal
+ */
+export const useCreateMaterialWithdrawal = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMaterialWithdrawal>>, TError,CreateMaterialWithdrawalMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMaterialWithdrawal>>,
+        TError,
+        CreateMaterialWithdrawalMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateMaterialWithdrawalMutationOptions(options));
+    }
+
+export const getGetMaterialWithdrawalUrl = (id: number,) => {
+
+
+
+
+  return `/api/material-withdrawals/${id}`
+}
+
+/**
+ * @summary Get a material withdrawal and its items
+ */
+export const getMaterialWithdrawal = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<MaterialWithdrawal> => {
+
+  return customFetch<MaterialWithdrawal>(getGetMaterialWithdrawalUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMaterialWithdrawalQueryKey = (id: number,) => {
+    return [
+    `/api/material-withdrawals/${id}`
+    ] as const;
+    }
+
+
+export const getGetMaterialWithdrawalQueryOptions = <TData = Awaited<ReturnType<typeof getMaterialWithdrawal>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMaterialWithdrawal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMaterialWithdrawalQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMaterialWithdrawal>>> = ({ signal }) => getMaterialWithdrawal(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMaterialWithdrawal>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMaterialWithdrawalQueryResult = NonNullable<Awaited<ReturnType<typeof getMaterialWithdrawal>>>
+export type GetMaterialWithdrawalQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get a material withdrawal and its items
+ */
+
+export function useGetMaterialWithdrawal<TData = Awaited<ReturnType<typeof getMaterialWithdrawal>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMaterialWithdrawal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMaterialWithdrawalQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateMaterialWithdrawalUrl = (id: number,) => {
+
+
+
+
+  return `/api/material-withdrawals/${id}`
+}
+
+/**
+ * @summary Edit a withdrawal or change its status
+ */
+export const updateMaterialWithdrawal = async (id: number,
+    materialWithdrawalUpdate: MaterialWithdrawalUpdate, options?: Parameters<typeof customFetch>[1]): Promise<MaterialWithdrawal> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MaterialWithdrawal>(getUpdateMaterialWithdrawalUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(materialWithdrawalUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateMaterialWithdrawalMutationKey = () => ['updateMaterialWithdrawal'] as const;
+
+export const getUpdateMaterialWithdrawalMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMaterialWithdrawal>>, TError,UpdateMaterialWithdrawalMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMaterialWithdrawal>>, TError,UpdateMaterialWithdrawalMutationVariables, TContext> => {
+
+const mutationKey = getUpdateMaterialWithdrawalMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMaterialWithdrawal>>, UpdateMaterialWithdrawalMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateMaterialWithdrawal(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMaterialWithdrawalMutationResult = NonNullable<Awaited<ReturnType<typeof updateMaterialWithdrawal>>>
+    export type UpdateMaterialWithdrawalMutationBody = BodyType<MaterialWithdrawalUpdate>
+    export type UpdateMaterialWithdrawalMutationError = ErrorType<unknown>
+    export type UpdateMaterialWithdrawalMutationVariables = {id: number;data: BodyType<MaterialWithdrawalUpdate>}
+
+    /**
+ * @summary Edit a withdrawal or change its status
+ */
+export const useUpdateMaterialWithdrawal = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMaterialWithdrawal>>, TError,UpdateMaterialWithdrawalMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMaterialWithdrawal>>,
+        TError,
+        UpdateMaterialWithdrawalMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateMaterialWithdrawalMutationOptions(options));
+    }
+
+export const getDeleteMaterialWithdrawalUrl = (id: number,) => {
+
+
+
+
+  return `/api/material-withdrawals/${id}`
+}
+
+/**
+ * @summary Delete a material withdrawal
+ */
+export const deleteMaterialWithdrawal = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteMaterialWithdrawalUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteMaterialWithdrawalMutationKey = () => ['deleteMaterialWithdrawal'] as const;
+
+export const getDeleteMaterialWithdrawalMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMaterialWithdrawal>>, TError,DeleteMaterialWithdrawalMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMaterialWithdrawal>>, TError,DeleteMaterialWithdrawalMutationVariables, TContext> => {
+
+const mutationKey = getDeleteMaterialWithdrawalMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMaterialWithdrawal>>, DeleteMaterialWithdrawalMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteMaterialWithdrawal(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMaterialWithdrawalMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMaterialWithdrawal>>>
+
+    export type DeleteMaterialWithdrawalMutationError = ErrorType<unknown>
+    export type DeleteMaterialWithdrawalMutationVariables = {id: number}
+
+    /**
+ * @summary Delete a material withdrawal
+ */
+export const useDeleteMaterialWithdrawal = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMaterialWithdrawal>>, TError,DeleteMaterialWithdrawalMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMaterialWithdrawal>>,
+        TError,
+        DeleteMaterialWithdrawalMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteMaterialWithdrawalMutationOptions(options));
+    }
 

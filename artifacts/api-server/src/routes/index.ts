@@ -3,6 +3,7 @@ import healthRouter from "./health";
 import campaignRouter from "./campaign";
 import authRouter from "./auth";
 import operationsRouter, { publicOperationsRouter } from "./operations";
+import materialsRouter from "./materials";
 import sheetsRouter from "./sheets";
 import { requireAuth } from "../middlewares/auth";
 
@@ -13,6 +14,7 @@ router.use(authRouter);
 router.use(publicOperationsRouter);
 router.use(requireAuth);
 router.use(operationsRouter);
+router.use(materialsRouter);
 router.use(sheetsRouter);
 router.use(campaignRouter);
 

@@ -163,6 +163,36 @@ export const PERMISSION_DEFINITIONS = [
     description: "Ler e cruzar a planilha oficial da campanha sem editá-la.",
     category: "Integrações",
   },
+  {
+    key: "materials:view",
+    label: "Ver retiradas de materiais",
+    description: "Consultar catálogo e retiradas dentro do próprio escopo territorial.",
+    category: "Operações",
+  },
+  {
+    key: "materials:create",
+    label: "Criar retiradas de materiais",
+    description: "Registrar uma nova retirada para uma cidade autorizada.",
+    category: "Operações",
+  },
+  {
+    key: "materials:update",
+    label: "Atualizar retiradas de materiais",
+    description: "Editar endereço, itens, responsável e status de uma retirada.",
+    category: "Operações",
+  },
+  {
+    key: "materials:delete",
+    label: "Excluir retiradas de materiais",
+    description: "Excluir uma retirada ainda não concluída.",
+    category: "Operações",
+  },
+  {
+    key: "materials:catalog",
+    label: "Gerenciar catálogo de materiais",
+    description: "Adicionar, editar e desativar materiais disponíveis para retirada.",
+    category: "Operações",
+  },
 ] as const;
 
 const DEFAULT_ROLE_PERMISSIONS: Record<AuthRole, string[]> = {
@@ -181,6 +211,10 @@ const DEFAULT_ROLE_PERMISSIONS: Record<AuthRole, string[]> = {
     "tasks:share",
     "calendar:view",
     "sheets:view",
+    "materials:view",
+    "materials:create",
+    "materials:update",
+    "materials:catalog",
   ],
   COORDENADOR: [
     "dashboard:view",
@@ -197,6 +231,10 @@ const DEFAULT_ROLE_PERMISSIONS: Record<AuthRole, string[]> = {
     "tasks:share",
     "calendar:view",
     "sheets:view",
+    "materials:view",
+    "materials:create",
+    "materials:update",
+    "materials:catalog",
   ],
   LIDERANCA: [
     "dashboard:view",
@@ -206,6 +244,9 @@ const DEFAULT_ROLE_PERMISSIONS: Record<AuthRole, string[]> = {
     "tasks:update",
     "tasks:share",
     "calendar:view",
+    "materials:view",
+    "materials:create",
+    "materials:update",
   ],
 };
 

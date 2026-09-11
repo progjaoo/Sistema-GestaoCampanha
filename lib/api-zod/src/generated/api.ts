@@ -468,3 +468,298 @@ export const ListReviewIssuesResponseItem = zod.object({
 export const ListReviewIssuesResponse = zod.array(ListReviewIssuesResponseItem)
 
 
+/**
+ * @summary List active materials in the catalog
+ */
+export const ListMaterialsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "description": zod.string().nullable(),
+  "unit": zod.string(),
+  "isActive": zod.boolean()
+})
+export const ListMaterialsResponse = zod.array(ListMaterialsResponseItem)
+
+
+/**
+ * @summary Add a material to the catalog
+ */
+
+
+
+export const CreateMaterialBody = zod.object({
+  "name": zod.string().min(1),
+  "description": zod.string().nullish(),
+  "unit": zod.string().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const CreateMaterialResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "description": zod.string().nullable(),
+  "unit": zod.string(),
+  "isActive": zod.boolean()
+})
+
+
+/**
+ * @summary Update or deactivate a catalog material
+ */
+
+
+
+export const UpdateMaterialParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+
+
+
+export const UpdateMaterialBody = zod.object({
+  "name": zod.string().min(1).optional(),
+  "description": zod.string().nullish(),
+  "unit": zod.string().optional(),
+  "isActive": zod.boolean().optional()
+})
+
+export const UpdateMaterialResponse = zod.object({
+  "id": zod.number().int(),
+  "name": zod.string(),
+  "description": zod.string().nullable(),
+  "unit": zod.string(),
+  "isActive": zod.boolean()
+})
+
+
+/**
+ * @summary Deactivate a catalog material
+ */
+
+
+
+export const DeleteMaterialParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const DeleteMaterialResponse = zod.void()
+
+
+/**
+ * @summary List material withdrawals in the authorized territory
+ */
+export const ListMaterialWithdrawalsResponseItem = zod.object({
+  "id": zod.number().int(),
+  "cityId": zod.number().int(),
+  "cityName": zod.string(),
+  "regionName": zod.string(),
+  "responsibleUserId": zod.number().int(),
+  "responsibleName": zod.string(),
+  "status": zod.enum(['requested', 'separated', 'delivered', 'cancelled']),
+  "postalCode": zod.string(),
+  "street": zod.string(),
+  "number": zod.string(),
+  "complement": zod.string().nullable(),
+  "neighborhood": zod.string(),
+  "addressCity": zod.string(),
+  "state": zod.string(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.number().int(),
+  "materialId": zod.number().int(),
+  "materialName": zod.string(),
+  "unit": zod.string(),
+  "quantity": zod.number().int().nullable()
+})).optional()
+})
+export const ListMaterialWithdrawalsResponse = zod.array(ListMaterialWithdrawalsResponseItem)
+
+
+/**
+ * @summary Create a city material withdrawal
+ */
+
+
+
+
+
+
+
+export const createMaterialWithdrawalBodyStateMin = 2;
+export const createMaterialWithdrawalBodyStateMax = 2;
+
+
+
+
+
+
+export const CreateMaterialWithdrawalBody = zod.object({
+  "cityId": zod.number().int().min(1),
+  "responsibleUserId": zod.number().int().min(1),
+  "postalCode": zod.string().min(1),
+  "street": zod.string().min(1),
+  "number": zod.string().min(1),
+  "complement": zod.string().nullish(),
+  "neighborhood": zod.string().min(1),
+  "addressCity": zod.string().min(1),
+  "state": zod.string().min(createMaterialWithdrawalBodyStateMin).max(createMaterialWithdrawalBodyStateMax),
+  "notes": zod.string().nullish(),
+  "items": zod.array(zod.object({
+  "materialId": zod.number().int().min(1),
+  "quantity": zod.number().int().min(1).nullish()
+})).min(1)
+})
+
+export const CreateMaterialWithdrawalResponse = zod.object({
+  "id": zod.number().int(),
+  "cityId": zod.number().int(),
+  "cityName": zod.string(),
+  "regionName": zod.string(),
+  "responsibleUserId": zod.number().int(),
+  "responsibleName": zod.string(),
+  "status": zod.enum(['requested', 'separated', 'delivered', 'cancelled']),
+  "postalCode": zod.string(),
+  "street": zod.string(),
+  "number": zod.string(),
+  "complement": zod.string().nullable(),
+  "neighborhood": zod.string(),
+  "addressCity": zod.string(),
+  "state": zod.string(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.number().int(),
+  "materialId": zod.number().int(),
+  "materialName": zod.string(),
+  "unit": zod.string(),
+  "quantity": zod.number().int().nullable()
+})).optional()
+})
+
+
+/**
+ * @summary Get a material withdrawal and its items
+ */
+
+
+
+export const GetMaterialWithdrawalParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const GetMaterialWithdrawalResponse = zod.object({
+  "id": zod.number().int(),
+  "cityId": zod.number().int(),
+  "cityName": zod.string(),
+  "regionName": zod.string(),
+  "responsibleUserId": zod.number().int(),
+  "responsibleName": zod.string(),
+  "status": zod.enum(['requested', 'separated', 'delivered', 'cancelled']),
+  "postalCode": zod.string(),
+  "street": zod.string(),
+  "number": zod.string(),
+  "complement": zod.string().nullable(),
+  "neighborhood": zod.string(),
+  "addressCity": zod.string(),
+  "state": zod.string(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.number().int(),
+  "materialId": zod.number().int(),
+  "materialName": zod.string(),
+  "unit": zod.string(),
+  "quantity": zod.number().int().nullable()
+})).optional()
+})
+
+
+/**
+ * @summary Edit a withdrawal or change its status
+ */
+
+
+
+export const UpdateMaterialWithdrawalParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+
+
+
+
+
+
+
+export const updateMaterialWithdrawalBodyOneStateMin = 2;
+export const updateMaterialWithdrawalBodyOneStateMax = 2;
+
+
+
+
+
+
+export const UpdateMaterialWithdrawalBody = zod.object({
+  "cityId": zod.number().int().min(1),
+  "responsibleUserId": zod.number().int().min(1),
+  "postalCode": zod.string().min(1),
+  "street": zod.string().min(1),
+  "number": zod.string().min(1),
+  "complement": zod.string().nullish(),
+  "neighborhood": zod.string().min(1),
+  "addressCity": zod.string().min(1),
+  "state": zod.string().min(updateMaterialWithdrawalBodyOneStateMin).max(updateMaterialWithdrawalBodyOneStateMax),
+  "notes": zod.string().nullish(),
+  "items": zod.array(zod.object({
+  "materialId": zod.number().int().min(1),
+  "quantity": zod.number().int().min(1).nullish()
+})).min(1)
+}).and(zod.object({
+  "status": zod.enum(['requested', 'separated', 'delivered', 'cancelled']).optional()
+}))
+
+export const UpdateMaterialWithdrawalResponse = zod.object({
+  "id": zod.number().int(),
+  "cityId": zod.number().int(),
+  "cityName": zod.string(),
+  "regionName": zod.string(),
+  "responsibleUserId": zod.number().int(),
+  "responsibleName": zod.string(),
+  "status": zod.enum(['requested', 'separated', 'delivered', 'cancelled']),
+  "postalCode": zod.string(),
+  "street": zod.string(),
+  "number": zod.string(),
+  "complement": zod.string().nullable(),
+  "neighborhood": zod.string(),
+  "addressCity": zod.string(),
+  "state": zod.string(),
+  "notes": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.number().int(),
+  "materialId": zod.number().int(),
+  "materialName": zod.string(),
+  "unit": zod.string(),
+  "quantity": zod.number().int().nullable()
+})).optional()
+})
+
+
+/**
+ * @summary Delete a material withdrawal
+ */
+
+
+
+export const DeleteMaterialWithdrawalParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const DeleteMaterialWithdrawalResponse = zod.void()
+
+

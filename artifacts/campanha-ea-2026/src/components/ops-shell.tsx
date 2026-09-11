@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { BarChart3, CalendarDays, ChevronRight, ClipboardCheck, FileSpreadsheet, Handshake, KanbanSquare, Map, Menu, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
+import { Archive, BarChart3, CalendarDays, ChevronRight, ClipboardCheck, FileSpreadsheet, Handshake, KanbanSquare, Map, Menu, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/lib/auth';
 
@@ -12,6 +12,7 @@ const navItems = [
   { href: '/acessos', label: 'Acessos', icon: ShieldCheck, permission: 'rbac:manage' },
   { href: '/kanban', label: 'Kanban', icon: KanbanSquare, permission: 'tasks:view' },
   { href: '/agenda', label: 'Agenda', icon: CalendarDays, permission: 'calendar:view' },
+  { href: '/materiais', label: 'Materiais', icon: Archive, permission: 'materials:view' },
   { href: '/planilha', label: 'Planilha', icon: FileSpreadsheet, permission: 'sheets:view' },
 ];
 
@@ -74,7 +75,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
               <ShieldCheck size={16} className="text-primary" />
               <span>Operações de campo</span>
               <span className="text-border">/</span>
-              <span className="font-semibold text-foreground">{location === '/' ? 'Resumo da campanha' : location.startsWith('/cobertura') ? 'Cobertura territorial' : location.startsWith('/dobrados') ? 'Apoio federal' : location.startsWith('/acessos') ? 'Controle de acesso' : location.startsWith('/kanban') ? 'Tarefas da campanha' : location.startsWith('/agenda') ? 'Agenda da campanha' : location.startsWith('/revisao') ? 'Fila de revisão' : 'Cadastro de pessoas'}</span>
+              <span className="font-semibold text-foreground">{location === '/' ? 'Resumo da campanha' : location.startsWith('/cobertura') ? 'Cobertura territorial' : location.startsWith('/dobrados') ? 'Apoio federal' : location.startsWith('/acessos') ? 'Controle de acesso' : location.startsWith('/kanban') ? 'Tarefas da campanha' : location.startsWith('/agenda') ? 'Agenda da campanha' : location.startsWith('/materiais') ? 'Retirada de material' : location.startsWith('/revisao') ? 'Fila de revisão' : 'Cadastro de pessoas'}</span>
             </div>
             <div className="sm:hidden">
               <div className="text-sm font-extrabold">EA 2026</div>

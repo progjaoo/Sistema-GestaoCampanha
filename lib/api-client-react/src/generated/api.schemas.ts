@@ -13,6 +13,127 @@ export interface Error {
   error: string;
 }
 
+export interface Material {
+  id: number;
+  name: string;
+  /** @nullable */
+  description: string | null;
+  unit: string;
+  isActive: boolean;
+}
+
+export interface MaterialInput {
+  /** @minLength 1 */
+  name: string;
+  /** @nullable */
+  description?: string | null;
+  unit?: string;
+  isActive?: boolean;
+}
+
+export interface MaterialUpdate {
+  /** @minLength 1 */
+  name?: string;
+  /** @nullable */
+  description?: string | null;
+  unit?: string;
+  isActive?: boolean;
+}
+
+export interface MaterialWithdrawalItem {
+  id: number;
+  materialId: number;
+  materialName: string;
+  unit: string;
+  /** @nullable */
+  quantity: number | null;
+}
+
+export type MaterialWithdrawalStatus = typeof MaterialWithdrawalStatus[keyof typeof MaterialWithdrawalStatus];
+
+
+export const MaterialWithdrawalStatus = {
+  requested: 'requested',
+  separated: 'separated',
+  delivered: 'delivered',
+  cancelled: 'cancelled',
+} as const;
+
+export interface MaterialWithdrawal {
+  id: number;
+  cityId: number;
+  cityName: string;
+  regionName: string;
+  responsibleUserId: number;
+  responsibleName: string;
+  status: MaterialWithdrawalStatus;
+  postalCode: string;
+  street: string;
+  number: string;
+  /** @nullable */
+  complement: string | null;
+  neighborhood: string;
+  addressCity: string;
+  state: string;
+  /** @nullable */
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items?: MaterialWithdrawalItem[];
+}
+
+export type MaterialWithdrawalInputItemsItem = {
+  /** @minimum 1 */
+  materialId: number;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  quantity?: number | null;
+};
+
+export interface MaterialWithdrawalInput {
+  /** @minimum 1 */
+  cityId: number;
+  /** @minimum 1 */
+  responsibleUserId: number;
+  /** @minLength 1 */
+  postalCode: string;
+  /** @minLength 1 */
+  street: string;
+  /** @minLength 1 */
+  number: string;
+  /** @nullable */
+  complement?: string | null;
+  /** @minLength 1 */
+  neighborhood: string;
+  /** @minLength 1 */
+  addressCity: string;
+  /**
+     * @minLength 2
+     * @maxLength 2
+     */
+  state: string;
+  /** @nullable */
+  notes?: string | null;
+  /** @minItems 1 */
+  items: MaterialWithdrawalInputItemsItem[];
+}
+
+export type MaterialWithdrawalUpdateStatus = typeof MaterialWithdrawalUpdateStatus[keyof typeof MaterialWithdrawalUpdateStatus];
+
+
+export const MaterialWithdrawalUpdateStatus = {
+  requested: 'requested',
+  separated: 'separated',
+  delivered: 'delivered',
+  cancelled: 'cancelled',
+} as const;
+
+export type MaterialWithdrawalUpdate = MaterialWithdrawalInput & {
+  status?: MaterialWithdrawalUpdateStatus;
+};
+
 export interface AuthLogin {
   email: string;
   /** @minLength 1 */

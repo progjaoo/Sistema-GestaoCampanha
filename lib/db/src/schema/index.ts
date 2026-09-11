@@ -20,3 +20,4 @@
 export * from "./campaign";
 export * from "./auth";
 export * from "./operations";
+export * from "./materials";
