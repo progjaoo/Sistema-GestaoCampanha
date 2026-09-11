@@ -41,7 +41,7 @@ export function CreateLeaderAccountDialog({ cities, onClose }: { cities: City[];
   }
 
   return <div className="fixed inset-0 z-50 flex items-end justify-center bg-primary/35 p-0 sm:items-center sm:p-6">
-    <form onSubmit={submit} className="w-full max-w-lg rounded-t-2xl bg-card p-6 shadow-2xl sm:rounded-2xl">
+    <form onSubmit={submit} className="w-full max-w-lg rounded-t-2xl bg-card p-6 shadow-2xl sm:rounded-2xl max-h-[90dvh] overflow-y-auto">
       <div className="mb-6 flex items-start justify-between"><div><p className="mono-label text-primary">Acesso restrito</p><h2 className="mt-1 text-xl font-extrabold">Criar usuário líder</h2><p className="mt-2 text-xs text-muted-foreground">O acesso ficará preso à cidade e à liderança selecionadas.</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-muted" aria-label="Fechar"><X size={18} /></button></div>
       <div className="space-y-4">
         <label className="block"><span className="mb-1.5 block text-xs font-bold">Nome completo</span><input required value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" /></label>

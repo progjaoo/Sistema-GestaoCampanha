@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Archive, BarChart3, CalendarDays, ChevronRight, ClipboardCheck, FileSpreadsheet, Handshake, KanbanSquare, Map, Menu, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/lib/auth';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const navItems = [
   { href: '/', label: 'Visão geral', icon: BarChart3 },
@@ -19,42 +20,80 @@ const navItems = [
 export function OpsShell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      const stored = localStorage.getItem('ea2026-sidebar-collapsed');
+      return stored ? JSON.parse(stored) : false;
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('ea2026-sidebar-collapsed', JSON.stringify(isCollapsed));
+  }, [isCollapsed]);
+
   const { user, can, logout } = useAuth();
   const active = (href: string) => href === '/' ? location === '/' : location.startsWith(href);
   const visibleNavItems = navItems.filter((item) => !item.permission || can(item.permission));
 
+  const compactSidebar = isCollapsed && !open;
+
   return (
-    <div className="min-h-[100dvh] bg-background text-foreground">
-      <aside className={`fixed inset-y-0 left-0 z-40 w-[268px] transform bg-sidebar text-sidebar-foreground transition-transform duration-300 md:translate-x-0 ${open ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex h-full flex-col border-r border-sidebar-border">
-          <div className="flex h-20 items-center justify-between px-6">
-            <Link href="/" className="flex items-center gap-3" data-testid="link-brand">
-              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-sidebar-primary text-sidebar-primary-foreground">
+    <div className="min-h-[100dvh] bg-background text-foreground flex">
+      {/* Sidebar Desktop & Mobile Drawer */}
+      <aside className={`fixed inset-y-0 left-0 z-50 flex w-[268px] flex-col transform bg-sidebar text-sidebar-foreground transition-all duration-300 md:translate-x-0 ${isCollapsed ? 'md:w-[72px]' : 'md:w-[268px]'} ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex h-20 shrink-0 items-center justify-between px-4 border-b border-sidebar-border">
+          {!compactSidebar ? (
+            <Link href="/" className="flex items-center gap-3 overflow-hidden" data-testid="link-brand">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-sidebar-primary text-sidebar-primary-foreground">
                 <Map size={18} strokeWidth={2.5} />
               </div>
-              <div>
-                <div className="text-[15px] font-extrabold tracking-tight">EA 2026</div>
-                <div className="mono-label text-sidebar-foreground/55">sala de operações</div>
+              <div className="min-w-0">
+                <div className="text-[15px] font-extrabold tracking-tight truncate">EA 2026</div>
+                <div className="mono-label text-sidebar-foreground/55 truncate">sala de operações</div>
               </div>
             </Link>
-            <button onClick={() => setOpen(false)} className="rounded-md p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent md:hidden" aria-label="Fechar menu" data-testid="button-close-menu">
-              <X size={18} />
-            </button>
-          </div>
-          <div className="mx-5 mb-6 border-t border-sidebar-border" />
-          <div className="px-4">
-            <p className="mono-label mb-3 px-3 text-sidebar-foreground/45">Navegação</p>
-            <nav className="space-y-1">
-          {visibleNavItems.map(({ href, label, icon: Icon }) => (
-                <Link key={href} href={href} onClick={() => setOpen(false)} className={`group flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold transition-colors ${active(href) ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground'}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}>
-                  <Icon size={17} strokeWidth={active(href) ? 2.5 : 1.8} />
-                  <span>{label}</span>
-                  {active(href) && <ChevronRight size={14} className="ml-auto opacity-60" />}
+          ) : (
+            <Link href="/" className="flex h-9 w-9 mx-auto items-center justify-center rounded-[10px] bg-sidebar-primary text-sidebar-primary-foreground" data-testid="link-brand-collapsed">
+              <Map size={18} strokeWidth={2.5} />
+            </Link>
+          )}
+          <button onClick={() => setOpen(false)} className="rounded-md p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent md:hidden" aria-label="Fechar menu" data-testid="button-close-menu">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 scrollbar-thin">
+          {!compactSidebar && <p className="mono-label mb-3 hidden px-3 text-sidebar-foreground/45 md:block">Navegação</p>}
+          <nav className="space-y-1">
+            {visibleNavItems.map(({ href, label, icon: Icon }) => {
+              const isActive = active(href);
+              const linkContent = (
+                <Link key={href} href={href} onClick={() => setOpen(false)} className={`group flex items-center ${compactSidebar ? 'justify-center px-0' : 'gap-3 px-3'} rounded-lg py-3 text-sm font-semibold transition-colors ${isActive ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground'}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}>
+                  <Icon size={17} strokeWidth={isActive ? 2.5 : 1.8} className="shrink-0" />
+                  {!compactSidebar && <span className="truncate">{label}</span>}
+                  {isActive && !compactSidebar && <ChevronRight size={14} className="ml-auto shrink-0 opacity-60" />}
                 </Link>
-              ))}
-            </nav>
-          </div>
-          <div className="mt-auto p-5">
+              );
+
+              if (compactSidebar) {
+                return (
+                  <Tooltip key={href} delayDuration={0}>
+                    <TooltipTrigger asChild>
+                      {linkContent}
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="font-bold">{label}</TooltipContent>
+                  </Tooltip>
+                );
+              }
+              return linkContent;
+            })}
+          </nav>
+        </div>
+
+        <div className="shrink-0 p-4 border-t border-sidebar-border">
+          {!compactSidebar ? (
             <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/45 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <span className="mono-label text-sidebar-foreground/50">Ambiente</span>
@@ -63,44 +102,53 @@ export function OpsShell({ children }: { children: ReactNode }) {
               <p className="text-xs font-semibold text-sidebar-foreground/80">Base territorial ativa</p>
               <p className="mt-1 text-[11px] text-sidebar-foreground/45">Atualização contínua</p>
             </div>
-          </div>
+          ) : (
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-sidebar-border bg-sidebar-accent/45" title="Ambiente ativo: Atualização contínua">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            </div>
+          )}
+
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="mt-4 hidden w-full items-center justify-center rounded-lg border border-sidebar-border py-2 text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground md:flex"
+            aria-label={isCollapsed ? "Expandir menu" : "Recolher menu"}
+            data-testid="button-toggle-sidebar"
+          >
+            <ChevronRight size={16} className={`transition-transform duration-300 ${isCollapsed ? '' : 'rotate-180'}`} />
+          </button>
         </div>
       </aside>
-      {open && <button className="fixed inset-0 z-30 bg-sidebar/45 md:hidden" onClick={() => setOpen(false)} aria-label="Fechar menu" data-testid="button-menu-overlay" />}
-      <div className="md:pl-[268px]">
-        <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm sm:px-7 lg:px-10">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setOpen(true)} className="rounded-lg p-2 hover:bg-muted md:hidden" aria-label="Abrir menu" data-testid="button-open-menu"><Menu size={21} /></button>
-            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
-              <ShieldCheck size={16} className="text-primary" />
-              <span>Operações de campo</span>
-              <span className="text-border">/</span>
-              <span className="font-semibold text-foreground">{location === '/' ? 'Resumo da campanha' : location.startsWith('/cobertura') ? 'Cobertura territorial' : location.startsWith('/dobrados') ? 'Apoio federal' : location.startsWith('/acessos') ? 'Controle de acesso' : location.startsWith('/kanban') ? 'Tarefas da campanha' : location.startsWith('/agenda') ? 'Agenda da campanha' : location.startsWith('/materiais') ? 'Retirada de material' : location.startsWith('/revisao') ? 'Fila de revisão' : 'Cadastro de pessoas'}</span>
+
+      {open && <button className="fixed inset-0 z-40 bg-sidebar/45 backdrop-blur-sm md:hidden" onClick={() => setOpen(false)} aria-label="Fechar menu" data-testid="button-menu-overlay" />}
+
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isCollapsed ? 'md:pl-[72px]' : 'md:pl-[268px]'}`}>
+        <header className="sticky top-0 z-30 flex h-[72px] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm sm:px-7 lg:px-10">
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={() => setOpen(true)} className="shrink-0 rounded-lg p-2 hover:bg-muted md:hidden" aria-label="Abrir menu" data-testid="button-open-menu"><Menu size={21} /></button>
+            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex truncate">
+              <ShieldCheck size={16} className="text-primary shrink-0" />
+              <span className="truncate">Operações de campo</span>
+              <span className="text-border shrink-0">/</span>
+              <span className="font-semibold text-foreground truncate">{location === '/' ? 'Resumo da campanha' : location.startsWith('/cobertura') ? 'Cobertura territorial' : location.startsWith('/dobrados') ? 'Apoio federal' : location.startsWith('/acessos') ? 'Controle de acesso' : location.startsWith('/kanban') ? 'Tarefas da campanha' : location.startsWith('/agenda') ? 'Agenda da campanha' : location.startsWith('/materiais') ? 'Retirada de material' : location.startsWith('/revisao') ? 'Fila de revisão' : 'Cadastro de pessoas'}</span>
             </div>
-            <div className="sm:hidden">
-              <div className="text-sm font-extrabold">EA 2026</div>
-              <div className="mono-label text-muted-foreground">operações</div>
+            <div className="sm:hidden truncate">
+              <div className="text-sm font-extrabold truncate">EA 2026</div>
+              <div className="mono-label text-muted-foreground truncate">operações</div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/liderancas" className="hidden items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground sm:flex" data-testid="link-quick-search">
+          <div className="flex items-center gap-3 shrink-0">
+            <Link href="/liderancas" className="hidden items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground md:flex" data-testid="link-quick-search">
               <Search size={14} /> Busca rápida
             </Link>
-            <Link href="/perfil" className="hidden text-right sm:block hover:opacity-75"><p className="text-xs font-extrabold">{user?.fullName}</p><p className="mono-label text-muted-foreground">{user?.role.replaceAll('_', ' ')}</p></Link>
-            <Link href="/perfil" className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-extrabold text-primary-foreground transition hover:opacity-80" title="Meu perfil" aria-label="Meu perfil" data-testid="link-profile">{user?.fullName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</Link>
-            <button onClick={() => void logout()} className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-xs font-extrabold text-primary transition hover:bg-muted" title="Sair" aria-label="Sair do sistema" data-testid="button-logout">×</button>
+            <Link href="/perfil" className="hidden text-right md:block hover:opacity-75"><p className="text-xs font-extrabold">{user?.fullName}</p><p className="mono-label text-muted-foreground">{user?.role.replaceAll('_', ' ')}</p></Link>
+            <Link href="/perfil" className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-extrabold text-primary-foreground transition hover:opacity-80 shrink-0" title="Meu perfil" aria-label="Meu perfil" data-testid="link-profile">{user?.fullName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</Link>
+            <button onClick={() => void logout()} className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-xs font-extrabold text-primary transition hover:bg-muted shrink-0" title="Sair" aria-label="Sair do sistema" data-testid="button-logout">
+              <X size={14} />
+            </button>
           </div>
         </header>
-        <main className="mx-auto max-w-[1440px] px-4 pb-24 pt-7 sm:px-7 lg:px-10 lg:pb-10">{children}</main>
+        <main className="flex-1 w-full mx-auto max-w-[1440px] px-4 py-7 sm:px-7 lg:px-10 lg:py-10">{children}</main>
       </div>
-      <nav className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-border bg-card/95 px-2 py-2 backdrop-blur-md md:hidden">
-        {visibleNavItems.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={`flex flex-1 flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${active(href) ? 'text-primary' : 'text-muted-foreground'}`} data-testid={`link-mobile-${label.toLowerCase().replaceAll(' ', '-')}`}>
-            <Icon size={18} />
-            {label}
-          </Link>
-        ))}
-      </nav>
     </div>
   );
 }
@@ -110,10 +158,10 @@ export function PageHeading({ eyebrow, title, description, action }: { eyebrow: 
     <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div>
         <p className="mono-label mb-2 text-primary">{eyebrow}</p>
-        <h1 className="text-[clamp(1.75rem,4vw,2.65rem)] font-extrabold leading-[1.05] tracking-[-.045em]">{title}</h1>
+        <h1 className="break-words text-[clamp(1.75rem,4vw,2.65rem)] font-extrabold leading-[1.05] tracking-[-.045em]">{title}</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
       </div>
-      {action}
+      {action && <div className="w-full sm:w-auto">{action}</div>}
     </div>
   );
 }

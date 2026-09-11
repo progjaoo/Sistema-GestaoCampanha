@@ -492,10 +492,10 @@ export default function TasksPage() {
           {(filters.search || filters.assignee || filters.priority || filters.due) && <p className="mt-3 text-[11px] font-bold text-muted-foreground" data-testid="task-filter-summary">{tasks.length} tarefa{tasks.length === 1 ? "" : "s"} encontrada{tasks.length === 1 ? "" : "s"}</p>}
         </div>}
 
-        {selectedBoard && <div className="grid gap-3 overflow-x-auto pb-2 md:grid-cols-2 xl:grid-cols-4">
+        {selectedBoard && <div className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory sm:grid sm:snap-none sm:grid-cols-2 xl:grid-cols-4">
           {columns.map((column) => {
             const items = tasks.filter((task) => task.status === column.key);
-            return <section key={column.key} onDragOver={(event) => event.preventDefault()} onDrop={() => void dropTask(column.key)} className={`min-h-[430px] min-w-[270px] rounded-2xl border border-border bg-muted/20 p-3 transition ${draggingTaskId ? "ring-1 ring-primary/20" : ""}`} data-testid={`kanban-column-${column.key}`}>
+            return <section key={column.key} onDragOver={(event) => event.preventDefault()} onDrop={() => void dropTask(column.key)} className={`min-h-[430px] w-[85vw] shrink-0 snap-center sm:w-auto rounded-2xl border border-border bg-muted/20 p-3 transition ${draggingTaskId ? "ring-1 ring-primary/20" : ""}`} data-testid={`kanban-column-${column.key}`}>
               <div className="mb-3 flex items-center justify-between px-2"><div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${column.tone}`} /><h2 className="text-sm font-extrabold">{column.label}</h2></div><span className="font-mono text-xs text-muted-foreground" data-testid={`column-count-${column.key}`}>{items.length}</span></div>
               <div className="min-h-[370px] space-y-3">
                 {loadingTasks ? <LoadingRows count={2} /> : items.length ? items.map((task) => <TaskCard key={task.id} task={task} canUpdate={can("tasks:update")} canShare={can("tasks:share")} dragging={draggingTaskId === task.id} onOpen={() => setSelectedTaskId(task.id)} onDragStart={() => setDraggingTaskId(task.id)} onDragEnd={() => setDraggingTaskId(null)} onStatusChange={(status) => void updateStatus(task, status)} onShare={() => setShareTask(task)} />) : <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground">Nenhuma tarefa nesta etapa.</div>}
