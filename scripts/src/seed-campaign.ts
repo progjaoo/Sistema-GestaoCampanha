@@ -9,6 +9,7 @@ import {
   db,
   federalDeputiesTable,
   leadershipsTable,
+  campaignMaterialsTable,
   regionsTable,
   reviewIssuesTable,
 } from "@workspace/db";
@@ -129,6 +130,17 @@ async function seed() {
     const deputyIds = new Map<number, number>();
     const articulatorIds = new Map<number, number>();
     const coordinatorIds = new Map<number, number>();
+
+    await transaction
+      .insert(campaignMaterialsTable)
+      .values([
+        { name: "Adesivos", description: "Adesivos de campanha", unit: "unidade", isActive: true },
+        { name: "Bandeiras", description: "Bandeiras de campanha", unit: "unidade", isActive: true },
+        { name: "Cartazes", description: "Cartazes de campanha", unit: "unidade", isActive: true },
+        { name: "Santinhos", description: "Material impresso", unit: "unidade", isActive: true },
+        { name: "Praguinhas", description: "Praguinhas de campanha", unit: "unidade", isActive: true },
+      ])
+      .onConflictDoNothing({ target: campaignMaterialsTable.name });
 
     for (const row of regions) {
       const sourceId = requiredNumber(row, "Regiao_ID");

@@ -254,8 +254,8 @@ router.get(
       .orderBy(
         requestedCityId
           ? sql`case when ${authUsersTable.cityId} = ${requestedCityId} then 0 else 1 end`
-          : sql`0`,
-        asc(authUsersTable.fullName),
+          : asc(authUsersTable.fullName),
+        ...(requestedCityId ? [asc(authUsersTable.fullName)] : []),
       );
     const includeInactive = hasPermission(req.auth!, "materials:catalog");
     const materials = await db.select().from(campaignMaterialsTable)
