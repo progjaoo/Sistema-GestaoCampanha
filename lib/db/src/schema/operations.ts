@@ -22,6 +22,7 @@ export const campaignTasksTable = pgTable(
     status: text("status").notNull().default("todo"),
     priority: text("priority").notNull().default("normal"),
     dueAt: timestamp("due_at", { withTimezone: true }),
+    boardId: integer("board_id").references(() => campaignBoardsTable.id, { onDelete: "set null" }),
     cityId: integer("city_id").references(() => citiesTable.id),
     leadershipId: integer("leadership_id").references(() => leadershipsTable.id),
     assigneeUserId: integer("assignee_user_id").references(() => authUsersTable.id),
@@ -34,6 +35,89 @@ export const campaignTasksTable = pgTable(
     index("campaign_tasks_city_idx").on(table.cityId),
     index("campaign_tasks_assignee_idx").on(table.assigneeUserId),
   ],
+);
+
+export const campaignBoardsTable = pgTable(
+  "campaign_boards",
+  {
+    id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    title: text("title").notNull(),
+    description: text("description"),
+    cityId: integer("city_id").notNull().references(() => citiesTable.id),
+    archived: boolean("archived").notNull().default(false),
+    createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("campaign_boards_city_idx").on(table.cityId),
+    index("campaign_boards_archived_idx").on(table.archived),
+  ],
+);
+
+export const campaignBoardMembersTable = pgTable(
+  "campaign_board_members",
+  {
+    boardId: integer("board_id").notNull().references(() => campaignBoardsTable.id, { onDelete: "cascade" }),
+    userId: integer("user_id").notNull().references(() => authUsersTable.id, { onDelete: "cascade" }),
+    addedByUserId: integer("added_by_user_id").notNull().references(() => authUsersTable.id),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.boardId, table.userId] })],
+);
+
+export const campaignTaskMembersTable = pgTable(
+  "campaign_task_members",
+  {
+    taskId: integer("task_id").notNull().references(() => campaignTasksTable.id, { onDelete: "cascade" }),
+    userId: integer("user_id").notNull().references(() => authUsersTable.id, { onDelete: "cascade" }),
+    addedByUserId: integer("added_by_user_id").notNull().references(() => authUsersTable.id),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.taskId, table.userId] })],
+);
+
+export const campaignTaskChecklistItemsTable = pgTable(
+  "campaign_task_checklist_items",
+  {
+    id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    taskId: integer("task_id").notNull().references(() => campaignTasksTable.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    completed: boolean("completed").notNull().default(false),
+    position: integer("position").notNull().default(0),
+    createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("campaign_task_checklist_task_idx").on(table.taskId, table.position),
+  ],
+);
+
+export const campaignTaskCommentsTable = pgTable(
+  "campaign_task_comments",
+  {
+    id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    taskId: integer("task_id").notNull().references(() => campaignTasksTable.id, { onDelete: "cascade" }),
+    userId: integer("user_id").notNull().references(() => authUsersTable.id),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [index("campaign_task_comments_task_idx").on(table.taskId, table.createdAt)],
+);
+
+export const campaignTaskActivityTable = pgTable(
+  "campaign_task_activity",
+  {
+    id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    taskId: integer("task_id").notNull().references(() => campaignTasksTable.id, { onDelete: "cascade" }),
+    actorUserId: integer("actor_user_id").notNull().references(() => authUsersTable.id),
+    action: text("action").notNull(),
+    detail: text("detail"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("campaign_task_activity_task_idx").on(table.taskId, table.createdAt)],
 );
 
 export const campaignCalendarEventsTable = pgTable(
@@ -94,6 +178,7 @@ export const insertTaskSchema = z.object({
   status: z.enum(["todo", "in_progress", "blocked", "done"]).optional(),
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   dueAt: z.string().datetime().nullable().optional(),
+  boardId: z.number().int().positive().nullable().optional(),
   cityId: z.number().int().positive(),
   leadershipId: z.number().int().positive(),
   leadershipPhone: z.string().nullable().optional(),
@@ -112,5 +197,11 @@ export const insertCalendarEventSchema = z.object({
 export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 
 export type CampaignTask = typeof campaignTasksTable.$inferSelect;
+export type CampaignBoard = typeof campaignBoardsTable.$inferSelect;
+export type CampaignBoardMember = typeof campaignBoardMembersTable.$inferSelect;
+export type CampaignTaskMember = typeof campaignTaskMembersTable.$inferSelect;
+export type CampaignTaskChecklistItem = typeof campaignTaskChecklistItemsTable.$inferSelect;
+export type CampaignTaskComment = typeof campaignTaskCommentsTable.$inferSelect;
+export type CampaignTaskActivity = typeof campaignTaskActivityTable.$inferSelect;
 export type CampaignCalendarEvent = typeof campaignCalendarEventsTable.$inferSelect;
 export type CampaignCalendarShare = typeof campaignCalendarSharesTable.$inferSelect;

@@ -1,26 +1,146 @@
-import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, GripVertical, MessageCircle, Plus, UserRound, X } from "lucide-react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  Archive,
+  CalendarClock,
+  Check,
+  CheckSquare,
+  CircleUserRound,
+  GripVertical,
+  History,
+  MessageCircle,
+  Plus,
+  RotateCcw,
+  Send,
+  SlidersHorizontal,
+  Trash2,
+  UserPlus,
+  UsersRound,
+  X,
+} from "lucide-react";
+import type { ReactNode } from "react";
 import { useListCities, useListLeaderships } from "@workspace/api-client-react";
 import { authFetch, useAuth } from "@/lib/auth";
-import { ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
+import { EmptyState, ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
+
+type Board = {
+  id: number;
+  title: string;
+  description: string | null;
+  cityId: number;
+  cityName: string;
+  regionName: string;
+  archived: boolean;
+};
 
 type Task = {
-  id: number; title: string; description: string | null; status: string; priority: string; dueAt: string | null;
-  cityId: number | null; cityName: string | null; regionName: string | null; leadershipId: number | null;
-  leadershipName: string | null; leadershipContact: string | null; assigneeName: string | null;
+  id: number;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  dueAt: string | null;
+  boardId: number | null;
+  boardName: string | null;
+  cityId: number | null;
+  cityName: string | null;
+  regionName: string | null;
+  leadershipId: number | null;
+  leadershipName: string | null;
+  leadershipContact: string | null;
+  assigneeUserId: number | null;
+  assigneeName: string | null;
 };
+
+type BoardDetail = Board & {
+  members: Array<{ id: number; fullName: string; email: string; role: string }>;
+  taskCount: number;
+};
+
+type Member = {
+  id: number;
+  fullName: string;
+  email: string;
+  role: string;
+  phone: string | null;
+};
+
+type ChecklistItem = {
+  id: number;
+  title: string;
+  completed: boolean;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type Comment = {
+  id: number;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  userId: number;
+  userName: string;
+};
+
+type Activity = {
+  id: number;
+  action: string;
+  detail: string | null;
+  createdAt: string;
+  actorUserId: number;
+  actorName: string;
+};
+
+type TaskDetail = Task & {
+  members: Member[];
+  checklist: ChecklistItem[];
+  comments: Comment[];
+  activity: Activity[];
+};
+
 type Recipient = { id: number; name: string | null; role: string; phone: string | null; email: string | null };
+
+type MemberOption = Member;
+
 const columns = [
-  { key: "todo", label: "A fazer", tone: "bg-secondary" },
-  { key: "in_progress", label: "Em andamento", tone: "bg-blue-50" },
-  { key: "blocked", label: "Bloqueadas", tone: "bg-amber-50" },
-  { key: "done", label: "Concluídas", tone: "bg-emerald-50" },
+  { key: "todo", label: "A fazer", tone: "bg-slate-400" },
+  { key: "in_progress", label: "Em andamento", tone: "bg-sky-500" },
+  { key: "blocked", label: "Bloqueadas", tone: "bg-amber-500" },
+  { key: "done", label: "Concluídas", tone: "bg-emerald-500" },
 ] as const;
+
+const statusLabels: Record<string, string> = {
+  todo: "A fazer",
+  in_progress: "Em andamento",
+  blocked: "Bloqueada",
+  done: "Concluída",
+};
+
+const priorityLabels: Record<string, string> = {
+  low: "Baixa",
+  normal: "Normal",
+  high: "Alta",
+  urgent: "Urgente",
+};
 
 async function json<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "Não foi possível concluir a operação.");
   return body as T;
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return "Sem prazo";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Data inválida" : date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function dateTimeValue(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 function whatsappUrl(phone: string, task: Task): string | null {
@@ -32,36 +152,103 @@ function whatsappUrl(phone: string, task: Task): string | null {
     task.description ? `Detalhes: ${task.description}` : "",
     task.cityName ? `Cidade: ${task.cityName}${task.regionName ? ` / ${task.regionName}` : ""}` : "",
     task.leadershipName ? `Liderança: ${task.leadershipName}` : "",
-    task.dueAt ? `Prazo: ${new Date(task.dueAt).toLocaleString("pt-BR")}` : "",
-    `Status: ${columns.find((column) => column.key === task.status)?.label ?? task.status}`,
+    task.dueAt ? `Prazo: ${formatDate(task.dueAt)}` : "",
+    `Status: ${statusLabels[task.status] ?? task.status}`,
   ].filter(Boolean).join("\n");
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
+}
+
+function priorityTone(priority: string): "neutral" | "warning" | "success" | "danger" {
+  if (priority === "urgent") return "danger";
+  if (priority === "high") return "warning";
+  if (priority === "low") return "success";
+  return "neutral";
 }
 
 export default function TasksPage() {
   const { can } = useAuth();
   const cities = useListCities();
+  const [showArchived, setShowArchived] = useState(false);
+  const [boards, setBoards] = useState<Board[]>([]);
+  const [selectedBoardId, setSelectedBoardId] = useState<number | null>(null);
+  const [boardDetail, setBoardDetail] = useState<BoardDetail | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingBoards, setLoadingBoards] = useState(true);
+  const [loadingTasks, setLoadingTasks] = useState(false);
   const [error, setError] = useState("");
-  const [showCreate, setShowCreate] = useState(false);
+  const [showBoardForm, setShowBoardForm] = useState(false);
+  const [editingBoard, setEditingBoard] = useState<Board | null>(null);
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [shareTask, setShareTask] = useState<Task | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null);
 
-  async function load() {
-    setLoading(true);
+  async function loadBoards(nextArchived = showArchived, preferredId?: number | null) {
+    setLoadingBoards(true);
     setError("");
-    try { setTasks(await json<Task[]>(await authFetch("/api/tasks"))); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar o Kanban."); }
-    finally { setLoading(false); }
+    try {
+      const nextBoards = await json<Board[]>(await authFetch(`/api/boards?archived=${nextArchived}`));
+      setBoards(nextBoards);
+      setSelectedBoardId((current) => {
+        const wanted = preferredId ?? current;
+        return wanted && nextBoards.some((board) => board.id === wanted) ? wanted : (nextBoards[0]?.id ?? null);
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível carregar os quadros.");
+    } finally {
+      setLoadingBoards(false);
+    }
   }
-  useEffect(() => { void load(); }, []);
+
+  async function loadTasks(boardId: number | null) {
+    if (!boardId) {
+      setTasks([]);
+      setLoadingTasks(false);
+      return;
+    }
+    setLoadingTasks(true);
+    try {
+      setTasks(await json<Task[]>(await authFetch(`/api/tasks?boardId=${boardId}`)));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível carregar as tarefas do quadro.");
+    } finally {
+      setLoadingTasks(false);
+    }
+  }
+
+  async function loadBoardDetail(boardId: number | null) {
+    if (!boardId) {
+      setBoardDetail(null);
+      return;
+    }
+    try {
+      setBoardDetail(await json<BoardDetail>(await authFetch(`/api/boards/${boardId}`)));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível carregar os detalhes do quadro.");
+    }
+  }
+
+  useEffect(() => {
+    void loadBoards(showArchived);
+  }, [showArchived]);
+
+  useEffect(() => {
+    void loadTasks(selectedBoardId);
+    void loadBoardDetail(selectedBoardId);
+  }, [selectedBoardId]);
 
   async function updateStatus(task: Task, status: string) {
+    if (!can("tasks:update")) return;
     try {
-      const updated = await json<Task>(await authFetch(`/api/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }));
-      setTasks((current) => current.map((item) => item.id === updated.id ? updated : item));
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível atualizar a tarefa."); }
+      await json<Task>(await authFetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      }));
+      await loadTasks(selectedBoardId);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível atualizar a tarefa.");
+    }
   }
 
   async function dropTask(status: string) {
@@ -72,42 +259,338 @@ export default function TasksPage() {
     await updateStatus(task, status);
   }
 
-  if (loading) return <OpsShell><PageHeading eyebrow="Operações / kanban" title="Tarefas da campanha" description="Acompanhe pendências por território e compartilhe instruções pelo WhatsApp pessoal." /><LoadingRows count={4} /></OpsShell>;
-  if (error && !tasks.length) return <OpsShell><PageHeading eyebrow="Operações / kanban" title="Tarefas da campanha" description="Acompanhe pendências por território e compartilhe instruções pelo WhatsApp pessoal." /><ErrorState label={error} onRetry={() => void load()} /></OpsShell>;
+  async function toggleBoardArchived(board: Board) {
+    if (!can("boards:archive")) return;
+    const action = board.archived ? "restaurar" : "arquivar";
+    if (!window.confirm(`Deseja ${action} o quadro “${board.title}”?`)) return;
+    try {
+      const updated = await json<Board>(await authFetch(`/api/boards/${board.id}/archive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived: !board.archived }),
+      }));
+      if (!updated.archived) {
+        setShowArchived(false);
+        await loadBoards(false, updated.id);
+        setSelectedBoardId(updated.id);
+      } else {
+        await loadBoards(false, null);
+        setSelectedBoardId(null);
+        setTasks([]);
+        setBoardDetail(null);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível alterar o estado do quadro.");
+    }
+  }
+
+  if (loadingBoards) {
+    return <OpsShell><PageHeading eyebrow="Operações / kanban" title="Tarefas da campanha" description="Organize frentes de trabalho por território e acompanhe cada entrega." /><LoadingRows count={5} /></OpsShell>;
+  }
+
+  if (error && !boards.length && !selectedBoardId) {
+    return <OpsShell><PageHeading eyebrow="Operações / kanban" title="Tarefas da campanha" description="Organize frentes de trabalho por território e acompanhe cada entrega." /><ErrorState label={error} onRetry={() => void loadBoards(showArchived)} /></OpsShell>;
+  }
+
+  const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? null;
+  const canCreateTask = can("tasks:create") && Boolean(selectedBoard && !selectedBoard.archived);
 
   return <OpsShell>
-    <PageHeading eyebrow="Operações / kanban" title="Tarefas da campanha" description="Arraste os cartões entre as colunas e compartilhe instruções pelo WhatsApp pessoal." action={can("tasks:create") ? <button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground"><Plus size={15} /> Nova tarefa</button> : undefined} />
-    {error && <p className="mb-4 rounded-xl bg-destructive/5 p-3 text-xs font-bold text-destructive">{error}</p>}
-    <div className="grid gap-4 overflow-x-auto pb-2 xl:grid-cols-4">{columns.map((column) => {
-      const items = tasks.filter((task) => task.status === column.key);
-      return <section key={column.key} onDragOver={(event) => event.preventDefault()} onDrop={() => void dropTask(column.key)} className={`min-h-[430px] min-w-[280px] rounded-2xl border border-border bg-muted/20 p-3 transition ${draggingTaskId ? "ring-1 ring-primary/20" : ""}`} data-testid={`kanban-column-${column.key}`}>
-        <div className="mb-3 flex items-center justify-between px-2"><div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${column.tone}`} /><h2 className="text-sm font-extrabold">{column.label}</h2></div><span className="font-mono text-xs text-muted-foreground">{items.length}</span></div>
-        <div className="min-h-[370px] space-y-3">{items.map((task) => <article key={task.id} draggable={can("tasks:update")} onDragStart={() => setDraggingTaskId(task.id)} onDragEnd={() => setDraggingTaskId(null)} className={`cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition active:cursor-grabbing ${draggingTaskId === task.id ? "rotate-1 opacity-50" : ""}`} data-testid={`task-card-${task.id}`}><div className="flex items-start justify-between gap-2"><div className="flex items-center gap-2"><GripVertical size={15} className="text-muted-foreground" /><StatusPill tone={task.priority === "urgent" ? "danger" : task.priority === "high" ? "warning" : "neutral"}>{task.priority}</StatusPill></div><span className="font-mono text-[10px] text-muted-foreground">#{task.id}</span></div><h3 className="mt-3 text-sm font-extrabold leading-5">{task.title}</h3>{task.description && <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{task.description}</p>}<div className="mt-4 space-y-2 border-t border-border pt-3 text-[11px] text-muted-foreground">{task.cityName && <div className="flex items-center gap-2"><span className="font-bold text-foreground">{task.cityName}</span>{task.regionName && <span>· {task.regionName}</span>}</div>}{task.leadershipName && <div className="flex items-center gap-1.5"><UserRound size={12} />{task.leadershipName}{task.leadershipContact ? <span className="text-emerald-700">· {task.leadershipContact}</span> : <span className="text-amber-700">· sem telefone</span>}</div>}{task.dueAt && <div className="flex items-center gap-1.5"><CalendarClock size={12} />{new Date(task.dueAt).toLocaleString("pt-BR")}</div>}</div><div className="mt-4 flex flex-wrap gap-2">{can("tasks:update") && <select value={task.status} onChange={(event) => void updateStatus(task, event.target.value)} className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-[10px] font-bold" aria-label={`Status da tarefa ${task.title}`}><option value="todo">A fazer</option><option value="in_progress">Em andamento</option><option value="blocked">Bloqueada</option><option value="done">Concluída</option></select>}{can("tasks:share") && <button onClick={() => setShareTask(task)} className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-extrabold text-emerald-800" title="Enviar pelo WhatsApp pessoal"><MessageCircle size={13} /> Enviar</button>}</div></article>)}</div>
-      </section>;
-    })}</div>
-    {showCreate && <CreateTaskDialog cities={cities.data ?? []} onClose={() => setShowCreate(false)} onCreated={(task) => { setTasks((current) => [task, ...current]); setShowCreate(false); }} />}
+    <PageHeading
+      eyebrow="Operações / kanban"
+      title="Tarefas da campanha"
+      description="Um quadro por território. Mova o trabalho, registre decisões e mantenha a liderança certa no circuito."
+      action={canCreateTask ? <button onClick={() => setShowTaskForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground" data-testid="button-create-task"><Plus size={15} /> Nova tarefa</button> : undefined}
+    />
+
+    {error && <p className="mb-4 rounded-xl bg-destructive/5 p-3 text-xs font-bold text-destructive" data-testid="status-error">{error}</p>}
+
+    <div className="mb-6 grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <aside className="rounded-2xl border border-border bg-card p-3 shadow-sm">
+        <div className="mb-3 flex items-center justify-between px-2">
+          <div>
+            <p className="mono-label text-primary">Territórios</p>
+            <h2 className="mt-1 text-sm font-extrabold">{showArchived ? "Quadros arquivados" : "Quadros ativos"}</h2>
+          </div>
+          {can("boards:create") && !showArchived && <button onClick={() => { setEditingBoard(null); setShowBoardForm(true); }} className="rounded-lg bg-secondary p-2 text-primary hover:bg-muted" aria-label="Criar quadro" data-testid="button-create-board"><Plus size={16} /></button>}
+        </div>
+        <div className="mb-3 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+          <button onClick={() => setShowArchived(false)} className={`rounded-md px-2 py-2 text-[11px] font-extrabold transition ${!showArchived ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`} data-testid="button-show-active-boards">Ativos</button>
+          <button onClick={() => setShowArchived(true)} className={`rounded-md px-2 py-2 text-[11px] font-extrabold transition ${showArchived ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`} data-testid="button-show-archived-boards">Arquivados</button>
+        </div>
+        {boards.length ? <div className="space-y-1" data-testid="board-list">
+          {boards.map((board) => <button key={board.id} onClick={() => setSelectedBoardId(board.id)} className={`w-full rounded-xl border p-3 text-left transition ${selectedBoardId === board.id ? "border-primary/40 bg-primary/5" : "border-transparent hover:border-border hover:bg-muted/60"}`} data-testid={`board-item-${board.id}`}>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-extrabold" data-testid={`board-title-${board.id}`}>{board.title}</p>
+                <p className="mt-1 truncate text-[11px] text-muted-foreground">{board.cityName} · {board.regionName}</p>
+              </div>
+              {board.archived && <Archive size={14} className="shrink-0 text-muted-foreground" />}
+            </div>
+          </button>)}
+        </div> : <div className="rounded-xl border border-dashed border-border p-5 text-center"><Archive size={18} className="mx-auto mb-2 text-muted-foreground" /><p className="text-xs font-bold">Nenhum quadro {showArchived ? "arquivado" : "ativo"}.</p><p className="mt-1 text-[11px] leading-4 text-muted-foreground">{showArchived ? "Quadros arquivados aparecerão aqui." : "Crie o primeiro quadro para começar."}</p></div>}
+      </aside>
+
+      <section className="min-w-0">
+        {selectedBoard ? <div className="mb-4 flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <StatusPill tone={selectedBoard.archived ? "warning" : "success"}>{selectedBoard.archived ? "Arquivado" : "Ativo"}</StatusPill>
+              <span className="mono-label text-muted-foreground">{selectedBoard.cityName} · {selectedBoard.regionName}</span>
+            </div>
+            <h2 className="truncate text-xl font-extrabold tracking-tight" data-testid={`selected-board-title-${selectedBoard.id}`}>{selectedBoard.title}</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">{selectedBoard.description || "Sem descrição para este quadro."}</p>
+            {boardDetail && <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-muted-foreground"><span className="inline-flex items-center gap-1.5"><CheckSquare size={13} /> {boardDetail.taskCount} tarefa{boardDetail.taskCount === 1 ? "" : "s"}</span><span className="inline-flex items-center gap-1.5"><UsersRound size={13} /> {boardDetail.members.length} membro{boardDetail.members.length === 1 ? "" : "s"}</span></div>}
+          </div>
+          <div className="flex shrink-0 gap-2">
+            {can("boards:update") && !selectedBoard.archived && <button onClick={() => { setEditingBoard(selectedBoard); setShowBoardForm(true); }} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[11px] font-extrabold hover:bg-muted" data-testid={`button-edit-board-${selectedBoard.id}`}><SlidersHorizontal size={13} /> Editar</button>}
+            {can("boards:archive") && <button onClick={() => void toggleBoardArchived(selectedBoard)} className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-[11px] font-extrabold hover:bg-muted" data-testid={`button-toggle-board-${selectedBoard.id}`}>{selectedBoard.archived ? <RotateCcw size={13} /> : <Archive size={13} />}{selectedBoard.archived ? "Restaurar" : "Arquivar"}</button>}
+          </div>
+        </div> : <EmptyState title={showArchived ? "Escolha um quadro arquivado" : "Crie ou selecione um quadro"} detail={showArchived ? "Selecione um quadro para consultar suas tarefas." : "Os quadros separam a operação por cidade e região."} />}
+
+        {selectedBoard && <div className="grid gap-3 overflow-x-auto pb-2 md:grid-cols-2 xl:grid-cols-4">
+          {columns.map((column) => {
+            const items = tasks.filter((task) => task.status === column.key);
+            return <section key={column.key} onDragOver={(event) => event.preventDefault()} onDrop={() => void dropTask(column.key)} className={`min-h-[430px] min-w-[270px] rounded-2xl border border-border bg-muted/20 p-3 transition ${draggingTaskId ? "ring-1 ring-primary/20" : ""}`} data-testid={`kanban-column-${column.key}`}>
+              <div className="mb-3 flex items-center justify-between px-2"><div className="flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${column.tone}`} /><h2 className="text-sm font-extrabold">{column.label}</h2></div><span className="font-mono text-xs text-muted-foreground" data-testid={`column-count-${column.key}`}>{items.length}</span></div>
+              <div className="min-h-[370px] space-y-3">
+                {loadingTasks ? <LoadingRows count={2} /> : items.length ? items.map((task) => <TaskCard key={task.id} task={task} canUpdate={can("tasks:update")} canShare={can("tasks:share")} dragging={draggingTaskId === task.id} onOpen={() => setSelectedTaskId(task.id)} onDragStart={() => setDraggingTaskId(task.id)} onDragEnd={() => setDraggingTaskId(null)} onStatusChange={(status) => void updateStatus(task, status)} onShare={() => setShareTask(task)} />) : <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground">Nenhuma tarefa nesta etapa.</div>}
+              </div>
+            </section>;
+          })}
+        </div>}
+      </section>
+    </div>
+
+    {showBoardForm && <BoardFormDialog board={editingBoard} cities={cities.data ?? []} onClose={() => setShowBoardForm(false)} onSaved={async (saved) => { setShowBoardForm(false); await loadBoards(false, saved.id); setShowArchived(false); setSelectedBoardId(saved.id); }} />}
+    {showTaskForm && selectedBoard && <CreateTaskDialog board={selectedBoard} cities={cities.data ?? []} onClose={() => setShowTaskForm(false)} onCreated={async (task) => { setShowTaskForm(false); setSelectedTaskId(task.id); await loadTasks(selectedBoard.id); await loadBoardDetail(selectedBoard.id); }} />}
+    {selectedTaskId && <TaskDetailDialog taskId={selectedTaskId} boards={boards} onClose={() => setSelectedTaskId(null)} onChanged={async (task) => { await loadTasks(task.boardId); await loadBoardDetail(task.boardId); if (task.boardId !== selectedBoardId) setSelectedBoardId(task.boardId); }} onShare={(task) => setShareTask(task)} />}
     {shareTask && <ShareTaskDialog task={shareTask} onClose={() => setShareTask(null)} />}
   </OpsShell>;
 }
 
-function CreateTaskDialog({ cities, onClose, onCreated }: { cities: Array<{ id: number; name: string; regionName: string }>; onClose: () => void; onCreated: (task: Task) => void }) {
-  const [form, setForm] = useState({ title: "", description: "", cityId: "", leadershipId: "", leadershipPhone: "", priority: "normal", dueAt: "" });
-  const [error, setError] = useState("");
+function TaskCard({ task, canUpdate, canShare, dragging, onOpen, onDragStart, onDragEnd, onStatusChange, onShare }: { task: Task; canUpdate: boolean; canShare: boolean; dragging: boolean; onOpen: () => void; onDragStart: () => void; onDragEnd: () => void; onStatusChange: (status: string) => void; onShare: () => void }) {
+  return <article draggable={canUpdate} onDragStart={onDragStart} onDragEnd={onDragEnd} className={`cursor-grab rounded-xl border border-border bg-card p-4 shadow-sm transition active:cursor-grabbing ${dragging ? "rotate-1 opacity-50" : ""}`} data-testid={`task-card-${task.id}`}>
+    <button onClick={onOpen} className="block w-full text-left" data-testid={`button-open-task-${task.id}`}>
+      <div className="flex items-start justify-between gap-2"><div className="flex items-center gap-2"><GripVertical size={15} className="text-muted-foreground" /><StatusPill tone={priorityTone(task.priority)}>{priorityLabels[task.priority] ?? task.priority}</StatusPill></div><span className="font-mono text-[10px] text-muted-foreground">#{task.id}</span></div>
+      <h3 className="mt-3 text-sm font-extrabold leading-5">{task.title}</h3>
+      {task.description && <p className="mt-2 line-clamp-3 text-xs leading-5 text-muted-foreground">{task.description}</p>}
+      <div className="mt-4 space-y-2 border-t border-border pt-3 text-[11px] text-muted-foreground">{task.cityName && <div className="font-bold text-foreground">{task.cityName}{task.regionName ? <span className="font-normal text-muted-foreground"> · {task.regionName}</span> : null}</div>}{task.leadershipName && <div className="flex items-center gap-1.5"><CircleUserRound size={12} />{task.leadershipName}{task.leadershipContact ? <span className="text-emerald-700">· {task.leadershipContact}</span> : <span className="text-amber-700">· sem telefone</span>}</div>}{task.assigneeName && <div className="flex items-center gap-1.5"><UsersRound size={12} />Responsável: {task.assigneeName}</div>}{task.dueAt && <div className="flex items-center gap-1.5"><CalendarClock size={12} />{formatDate(task.dueAt)}</div>}</div>
+    </button>
+    <div className="mt-4 flex flex-wrap gap-2">{canUpdate && <select value={task.status} onChange={(event) => onStatusChange(event.target.value)} onClick={(event) => event.stopPropagation()} className="h-8 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-[10px] font-bold" aria-label={`Status da tarefa ${task.title}`} data-testid={`select-task-status-${task.id}`}><option value="todo">A fazer</option><option value="in_progress">Em andamento</option><option value="blocked">Bloqueada</option><option value="done">Concluída</option></select>}{canShare && <button onClick={onShare} className="inline-flex h-8 items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 text-[10px] font-extrabold text-emerald-800" title="Enviar pelo WhatsApp pessoal" data-testid={`button-share-task-${task.id}`}><MessageCircle size={13} /> Enviar</button>}</div>
+  </article>;
+}
+
+function BoardFormDialog({ board, cities, onClose, onSaved }: { board: Board | null; cities: Array<{ id: number; name: string; regionName: string }>; onClose: () => void; onSaved: (board: Board) => Promise<void> }) {
+  const [title, setTitle] = useState(board?.title ?? "");
+  const [description, setDescription] = useState(board?.description ?? "");
+  const [cityId, setCityId] = useState(String(board?.cityId ?? ""));
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const response = await authFetch(board ? `/api/boards/${board.id}` : "/api/boards", { method: board ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(board ? { title, description } : { title, description, cityId: Number(cityId) }) });
+      await onSaved(await json<Board>(response));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível salvar o quadro.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return <ModalShell title={board ? "Editar quadro" : "Novo quadro"} eyebrow="Organização territorial" onClose={onClose}>
+    <form onSubmit={submit} className="space-y-4">
+      <FieldLabel label="Nome do quadro"><input required value={title} onChange={(event) => setTitle(event.target.value)} className="field" data-testid="input-board-title" /></FieldLabel>
+      <FieldLabel label="Descrição"><textarea value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-24 w-full rounded-lg border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" data-testid="input-board-description" /></FieldLabel>
+      {!board && <FieldLabel label="Cidade"><select required value={cityId} onChange={(event) => setCityId(event.target.value)} className="field" data-testid="select-board-city"><option value="">Selecione uma cidade</option>{cities.map((city) => <option key={city.id} value={city.id}>{city.name} · {city.regionName}</option>)}</select></FieldLabel>}
+      {error && <p className="rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive" data-testid="board-form-error">{error}</p>}
+      <button disabled={saving || !title.trim() || (!board && !cityId)} className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-extrabold text-primary-foreground disabled:opacity-60" data-testid="button-save-board">{saving ? "Salvando…" : board ? "Salvar alterações" : "Criar quadro"}</button>
+    </form>
+  </ModalShell>;
+}
+
+function CreateTaskDialog({ board, cities, onClose, onCreated }: { board: Board; cities: Array<{ id: number; name: string; regionName: string }>; onClose: () => void; onCreated: (task: Task) => Promise<void> }) {
+  const [form, setForm] = useState({ title: "", description: "", cityId: String(board.cityId), leadershipId: "", leadershipPhone: "", priority: "normal", dueAt: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const leaderships = useListLeaderships({ cityId: form.cityId ? Number(form.cityId) : undefined, page: 1, pageSize: 100 });
   const selectedLeadership = leaderships.data?.items.find((leadership) => leadership.id === Number(form.leadershipId));
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setSaving(true); setError("");
-    try { onCreated(await json<Task>(await authFetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, cityId: Number(form.cityId), leadershipId: Number(form.leadershipId), leadershipPhone: form.leadershipPhone || null, dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null }) }))); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível criar a tarefa."); }
-    finally { setSaving(false); }
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const task = await json<Task>(await authFetch("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: form.title, description: form.description, boardId: board.id, cityId: Number(form.cityId), leadershipId: Number(form.leadershipId), leadershipPhone: form.leadershipPhone || null, priority: form.priority, dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null }) }));
+      await onCreated(task);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível criar a tarefa.");
+    } finally {
+      setSaving(false);
+    }
   }
-  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-primary/35 p-0 sm:items-center sm:p-6"><form onSubmit={submit} className="max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-card p-6 shadow-2xl sm:rounded-2xl"><div className="mb-6 flex items-start justify-between"><div><p className="mono-label text-primary">Nova operação</p><h2 className="mt-1 text-xl font-extrabold">Criar tarefa</h2><p className="mt-2 text-xs text-muted-foreground">Toda tarefa fica vinculada a uma cidade e à liderança que deve receber o contato.</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-muted" aria-label="Fechar"><X size={18} /></button></div><div className="space-y-4"><label className="block"><span className="mb-1.5 block text-xs font-bold">Título</span><input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring" /></label><label className="block"><span className="mb-1.5 block text-xs font-bold">Detalhes</span><textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="min-h-24 w-full rounded-lg border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" /></label><div className="grid gap-4 sm:grid-cols-2"><label><span className="mb-1.5 block text-xs font-bold">Cidade</span><select required value={form.cityId} onChange={(event) => setForm({ ...form, cityId: event.target.value, leadershipId: "", leadershipPhone: "" })} className="h-11 w-full rounded-lg border border-input bg-background px-3 text-xs font-bold"><option value="">Selecione</option>{cities.map((city) => <option key={city.id} value={city.id}>{city.name} · {city.regionName}</option>)}</select></label><label><span className="mb-1.5 block text-xs font-bold">Prioridade</span><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} className="h-11 w-full rounded-lg border border-input bg-background px-3 text-xs font-bold"><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label></div><label className="block"><span className="mb-1.5 block text-xs font-bold">Liderança responsável</span><select required disabled={!form.cityId || leaderships.isLoading} value={form.leadershipId} onChange={(event) => setForm({ ...form, leadershipId: event.target.value, leadershipPhone: "" })} className="h-11 w-full rounded-lg border border-input bg-background px-3 text-xs font-bold"><option value="">{leaderships.isLoading ? "Carregando lideranças…" : "Selecione a liderança"}</option>{(leaderships.data?.items ?? []).map((leadership) => <option key={leadership.id} value={leadership.id}>{leadership.name} · {leadership.leadershipContact || "sem telefone"}</option>)}</select></label>{selectedLeadership && !selectedLeadership.leadershipContact && <label className="block rounded-xl border border-amber-200 bg-amber-50 p-3"><span className="mb-1.5 block text-xs font-extrabold text-amber-900">Telefone do responsável</span><p className="mb-2 text-[11px] leading-4 text-amber-800">Esta liderança ainda não tem telefone. Cadastre-o agora para habilitar o envio manual pelo WhatsApp.</p><input required type="tel" value={form.leadershipPhone} onChange={(event) => setForm({ ...form, leadershipPhone: event.target.value })} placeholder="(00) 00000-0000" className="h-10 w-full rounded-lg border border-amber-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-amber-400" /></label>}<label className="block"><span className="mb-1.5 block text-xs font-bold">Prazo</span><input type="datetime-local" value={form.dueAt} onChange={(event) => setForm({ ...form, dueAt: event.target.value })} className="h-11 w-full rounded-lg border border-input bg-background px-3 text-sm" /></label></div>{error && <p className="mt-4 rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive">{error}</p>}<button disabled={saving || !form.leadershipId} className="mt-6 flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-extrabold text-primary-foreground disabled:opacity-60">{saving ? "Salvando…" : "Criar tarefa"}</button></form></div>;
+  return <ModalShell title="Criar tarefa" eyebrow={`Novo trabalho / ${board.title}`} onClose={onClose}>
+    <form onSubmit={submit} className="space-y-4">
+      <FieldLabel label="Título"><input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="field" data-testid="input-task-title" /></FieldLabel>
+      <FieldLabel label="Detalhes"><textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="min-h-24 w-full rounded-lg border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" data-testid="input-task-description" /></FieldLabel>
+      <div className="grid gap-4 sm:grid-cols-2"><FieldLabel label="Cidade"><select required value={form.cityId} onChange={(event) => setForm({ ...form, cityId: event.target.value, leadershipId: "", leadershipPhone: "" })} className="field" data-testid="select-task-city">{cities.filter((city) => city.id === board.cityId).map((city) => <option key={city.id} value={city.id}>{city.name} · {city.regionName}</option>)}</select></FieldLabel><FieldLabel label="Prioridade"><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} className="field" data-testid="select-task-priority"><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></FieldLabel></div>
+      <FieldLabel label="Liderança responsável"><select required disabled={!form.cityId || leaderships.isLoading} value={form.leadershipId} onChange={(event) => setForm({ ...form, leadershipId: event.target.value, leadershipPhone: "" })} className="field" data-testid="select-task-leadership"><option value="">{leaderships.isLoading ? "Carregando lideranças…" : "Selecione a liderança"}</option>{(leaderships.data?.items ?? []).map((leadership) => <option key={leadership.id} value={leadership.id}>{leadership.name} · {leadership.leadershipContact || "sem telefone"}</option>)}</select></FieldLabel>
+      {selectedLeadership && !selectedLeadership.leadershipContact && <label className="block rounded-xl border border-amber-200 bg-amber-50 p-3"><span className="mb-1.5 block text-xs font-extrabold text-amber-900">Telefone do responsável</span><p className="mb-2 text-[11px] leading-4 text-amber-800">Cadastre um telefone com DDD para habilitar o envio manual pelo WhatsApp.</p><input required type="tel" value={form.leadershipPhone} onChange={(event) => setForm({ ...form, leadershipPhone: event.target.value })} placeholder="(00) 00000-0000" className="h-10 w-full rounded-lg border border-amber-300 bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-amber-400" data-testid="input-task-leadership-phone" /></label>}
+      <FieldLabel label="Prazo"><input type="datetime-local" value={form.dueAt} onChange={(event) => setForm({ ...form, dueAt: event.target.value })} className="field" data-testid="input-task-due-at" /></FieldLabel>
+      {error && <p className="rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive" data-testid="task-form-error">{error}</p>}
+      <button disabled={saving || !form.leadershipId} className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-extrabold text-primary-foreground disabled:opacity-60" data-testid="button-save-task">{saving ? "Salvando…" : "Criar tarefa"}</button>
+    </form>
+  </ModalShell>;
+}
+
+function TaskDetailDialog({ taskId, boards, onClose, onChanged, onShare }: { taskId: number; boards: Board[]; onClose: () => void; onChanged: (task: Task) => Promise<void>; onShare: (task: Task) => void }) {
+  const { can } = useAuth();
+  const [detail, setDetail] = useState<TaskDetail | null>(null);
+  const [memberOptions, setMemberOptions] = useState<MemberOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [checklistTitle, setChecklistTitle] = useState("");
+  const [comment, setComment] = useState("");
+  const [memberId, setMemberId] = useState("");
+  const [form, setForm] = useState({ title: "", description: "", status: "todo", priority: "normal", dueAt: "", assigneeUserId: "", boardId: "" });
+
+  async function loadDetail() {
+    setLoading(true);
+    setError("");
+    try {
+      const next = await json<TaskDetail>(await authFetch(`/api/tasks/${taskId}`));
+      setDetail(next);
+      setForm({ title: next.title, description: next.description ?? "", status: next.status, priority: next.priority, dueAt: dateTimeValue(next.dueAt), assigneeUserId: next.assigneeUserId ? String(next.assigneeUserId) : "", boardId: next.boardId ? String(next.boardId) : "" });
+      if (can("tasks:collaborate")) setMemberOptions(await json<MemberOption[]>(await authFetch(`/api/tasks/${taskId}/members/options`)));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível carregar a tarefa.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadDetail();
+  }, [taskId]);
+
+  async function updateTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!detail || !can("tasks:update")) return;
+    setSaving(true);
+    setError("");
+    try {
+      const currentBoardId = detail.boardId ? String(detail.boardId) : "";
+      const updates = { title: form.title, description: form.description, status: form.status, priority: form.priority, dueAt: form.dueAt ? new Date(form.dueAt).toISOString() : null, assigneeUserId: form.assigneeUserId ? Number(form.assigneeUserId) : null, ...(form.boardId !== currentBoardId ? { boardId: form.boardId ? Number(form.boardId) : null } : {}) };
+      const updated = await json<Task>(await authFetch(`/api/tasks/${detail.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updates) }));
+      setDetail((current) => current ? { ...current, ...updated } : current);
+      await onChanged(updated);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível salvar a tarefa.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function collaborate(path: string, init: RequestInit) {
+    try {
+      await json<unknown>(await authFetch(path, init));
+      await loadDetail();
+      if (detail) await onChanged(detail);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível atualizar a colaboração.");
+    }
+  }
+
+  async function addMember() {
+    if (!memberId || !can("tasks:collaborate")) return;
+    await collaborate(`/api/tasks/${taskId}/members`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: Number(memberId) }) });
+    setMemberId("");
+  }
+
+  async function addChecklist(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!checklistTitle.trim() || !can("tasks:collaborate")) return;
+    await collaborate(`/api/tasks/${taskId}/checklist`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: checklistTitle.trim() }) });
+    setChecklistTitle("");
+  }
+
+  async function addComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!comment.trim() || !can("tasks:collaborate")) return;
+    await collaborate(`/api/tasks/${taskId}/comments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: comment.trim() }) });
+    setComment("");
+  }
+
+  const availableMembers = useMemo(() => memberOptions.filter((option) => !detail?.members.some((member) => member.id === option.id)), [detail?.members, memberOptions]);
+  const assigneeOptions = useMemo(() => {
+    if (!detail) return [];
+    const options = memberOptions.length ? memberOptions : detail.members;
+    if (detail.assigneeUserId && detail.assigneeName && !options.some((option) => option.id === detail.assigneeUserId)) {
+      return [...options, { id: detail.assigneeUserId, fullName: detail.assigneeName, email: "", role: "responsável", phone: null }];
+    }
+    return options;
+  }, [detail, memberOptions]);
+  if (loading) return <ModalShell title="Detalhes da tarefa" eyebrow="Carregando" onClose={onClose}><LoadingRows count={5} /></ModalShell>;
+  if (!detail) return <ModalShell title="Detalhes da tarefa" eyebrow="Erro" onClose={onClose}><ErrorState label={error || "Tarefa não encontrada."} onRetry={() => void loadDetail()} /></ModalShell>;
+
+  return <ModalShell title={detail.title} eyebrow={`Tarefa #${detail.id} / ${detail.cityName ?? "Sem cidade"}`} onClose={onClose} wide>
+    {error && <p className="mb-4 rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive" data-testid="detail-error">{error}</p>}
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,.9fr)]">
+      <div className="space-y-5">
+        <form onSubmit={updateTask} className="space-y-4 rounded-xl border border-border bg-background/50 p-4">
+          <div className="flex items-center justify-between"><div><p className="mono-label text-primary">Campos da operação</p><p className="mt-1 text-xs text-muted-foreground">Atualize a tarefa sem sair do quadro.</p></div>{can("tasks:share") && <button type="button" onClick={() => onShare(detail)} className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-extrabold text-emerald-800" data-testid={`button-detail-share-${detail.id}`}><Send size={13} /> Compartilhar</button>}</div>
+          <FieldLabel label="Título"><input disabled={!can("tasks:update")} required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="field" data-testid="input-detail-title" /></FieldLabel>
+          <FieldLabel label="Descrição"><textarea disabled={!can("tasks:update")} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="min-h-24 w-full rounded-lg border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" data-testid="input-detail-description" /></FieldLabel>
+          <div className="grid gap-4 sm:grid-cols-2"><FieldLabel label="Status"><select disabled={!can("tasks:update")} value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })} className="field" data-testid="select-detail-status"><option value="todo">A fazer</option><option value="in_progress">Em andamento</option><option value="blocked">Bloqueada</option><option value="done">Concluída</option></select></FieldLabel><FieldLabel label="Prioridade"><select disabled={!can("tasks:update")} value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} className="field" data-testid="select-detail-priority"><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></FieldLabel></div>
+          <div className="grid gap-4 sm:grid-cols-2"><FieldLabel label="Quadro"><select disabled={!can("tasks:update")} value={form.boardId} onChange={(event) => setForm({ ...form, boardId: event.target.value })} className="field" data-testid="select-detail-board"><option value="">Sem quadro</option>{boards.filter((board) => board.cityId === detail.cityId).map((board) => <option key={board.id} value={board.id}>{board.title}{board.archived ? " · arquivado" : ""}</option>)}</select></FieldLabel><FieldLabel label="Prazo"><input disabled={!can("tasks:update")} type="datetime-local" value={form.dueAt} onChange={(event) => setForm({ ...form, dueAt: event.target.value })} className="field" data-testid="input-detail-due-at" /></FieldLabel></div>
+          <FieldLabel label="Responsável"><select disabled={!can("tasks:update")} value={form.assigneeUserId} onChange={(event) => setForm({ ...form, assigneeUserId: event.target.value })} className="field" data-testid="select-detail-assignee"><option value="">Sem responsável</option>{assigneeOptions.map((member) => <option key={member.id} value={member.id}>{member.fullName} · {member.role.replaceAll("_", " ")}</option>)}</select></FieldLabel>
+          {can("tasks:update") && <button disabled={saving} className="flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-xs font-extrabold text-primary-foreground disabled:opacity-60" data-testid="button-save-task-detail">{saving ? "Salvando…" : "Salvar campos"}</button>}
+        </form>
+
+        <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-primary">Checklist</p><p className="mt-1 text-xs text-muted-foreground">{detail.checklist.filter((item) => item.completed).length} de {detail.checklist.length} concluídos</p></div><CheckSquare size={17} className="text-primary" /></div>{detail.checklist.length ? <div className="space-y-2">{detail.checklist.map((item) => <div key={item.id} className="flex items-center gap-2 rounded-lg border border-border p-2.5" data-testid={`checklist-item-${item.id}`}><button disabled={!can("tasks:collaborate")} onClick={() => void collaborate(`/api/tasks/${taskId}/checklist/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: !item.completed }) })} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${item.completed ? "border-emerald-500 bg-emerald-500 text-white" : "border-input bg-background"}`} aria-label={item.completed ? `Reabrir ${item.title}` : `Concluir ${item.title}`} data-testid={`button-toggle-checklist-${item.id}`}>{item.completed && <Check size={13} />}</button><span className={`min-w-0 flex-1 text-xs ${item.completed ? "text-muted-foreground line-through" : "font-semibold"}`}>{item.title}</span>{can("tasks:collaborate") && <button onClick={() => void collaborate(`/api/tasks/${taskId}/checklist/${item.id}`, { method: "DELETE" })} className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`Excluir ${item.title}`} data-testid={`button-delete-checklist-${item.id}`}><Trash2 size={13} /></button>}</div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Nenhum item adicionado.</p>}{can("tasks:collaborate") && <form onSubmit={addChecklist} className="mt-3 flex gap-2"><input value={checklistTitle} onChange={(event) => setChecklistTitle(event.target.value)} placeholder="Adicionar item" className="field" data-testid="input-checklist-title" /><button disabled={!checklistTitle.trim()} className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-secondary px-3 text-xs font-extrabold text-secondary-foreground disabled:opacity-50" data-testid="button-add-checklist"><Plus size={14} /> Adicionar</button></form>}</section>
+
+        <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-primary">Comentários</p><p className="mt-1 text-xs text-muted-foreground">Registre decisões e próximos passos.</p></div><MessageCircle size={17} className="text-primary" /></div>{detail.comments.length ? <div className="space-y-3">{detail.comments.map((item) => <div key={item.id} className="rounded-lg border border-border p-3" data-testid={`comment-${item.id}`}><div className="flex items-center justify-between gap-2"><span className="text-xs font-extrabold">{item.userName}</span><span className="text-[10px] text-muted-foreground">{formatDate(item.createdAt)}</span></div><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">{item.body}</p></div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Ainda não há comentários nesta tarefa.</p>}{can("tasks:collaborate") && <form onSubmit={addComment} className="mt-3 space-y-2"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Escreva uma atualização para a equipe…" className="min-h-20 w-full rounded-lg border border-input bg-background p-3 text-xs outline-none focus:ring-2 focus:ring-ring" data-testid="input-task-comment" /><button disabled={!comment.trim()} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-secondary px-3 text-xs font-extrabold text-secondary-foreground disabled:opacity-50" data-testid="button-add-comment"><MessageCircle size={14} /> Comentar</button></form>}</section>
+      </div>
+
+      <div className="space-y-5">
+        <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-primary">Colaboração</p><p className="mt-1 text-xs text-muted-foreground">{detail.members.length} membro{detail.members.length === 1 ? "" : "s"} na tarefa</p></div><UsersRound size={17} className="text-primary" /></div>{detail.members.length ? <div className="space-y-2">{detail.members.map((member) => <div key={member.id} className="flex items-center gap-3 rounded-lg border border-border p-2.5" data-testid={`task-member-${member.id}`}><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-extrabold text-primary">{member.fullName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-extrabold">{member.fullName}</p><p className="truncate text-[10px] text-muted-foreground">{member.role.replaceAll("_", " ")}</p></div>{can("tasks:collaborate") && <button onClick={() => void collaborate(`/api/tasks/${taskId}/members/${member.id}`, { method: "DELETE" })} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`Remover ${member.fullName}`} data-testid={`button-remove-member-${member.id}`}><X size={14} /></button>}</div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Nenhum membro adicionado.</p>}{can("tasks:collaborate") && <div className="mt-3 flex gap-2"><select value={memberId} onChange={(event) => setMemberId(event.target.value)} className="field" data-testid="select-add-member"><option value="">Adicionar membro</option>{availableMembers.map((member) => <option key={member.id} value={member.id}>{member.fullName} · {member.role.replaceAll("_", " ")}</option>)}</select><button onClick={() => void addMember()} disabled={!memberId} className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-secondary px-3 text-xs font-extrabold text-secondary-foreground disabled:opacity-50" data-testid="button-add-member"><UserPlus size={14} /> Adicionar</button></div>}</section>
+
+        <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-4 flex items-center gap-2"><History size={17} className="text-primary" /><div><p className="mono-label text-primary">Histórico</p><p className="mt-1 text-xs text-muted-foreground">Atividade registrada no servidor.</p></div></div>{detail.activity.length ? <div className="space-y-3 border-l border-border pl-4">{detail.activity.map((item) => <div key={item.id} className="relative" data-testid={`activity-${item.id}`}><span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" /><p className="text-xs font-bold">{item.actorName}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{item.detail || item.action.replaceAll("_", " ")} · {formatDate(item.createdAt)}</p></div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Nenhuma atividade registrada.</p>}</section>
+
+        <section className="rounded-xl border border-border bg-primary/[.04] p-4 text-xs"><p className="mono-label text-primary">Contexto territorial</p><div className="mt-3 space-y-2 text-muted-foreground"><p><span className="font-bold text-foreground">Cidade:</span> {detail.cityName || "Não informada"}</p><p><span className="font-bold text-foreground">Liderança:</span> {detail.leadershipName || "Não informada"}</p><p><span className="font-bold text-foreground">Contato:</span> {detail.leadershipContact || "Sem telefone"}</p><p><span className="font-bold text-foreground">Prazo:</span> {formatDate(detail.dueAt)}</p></div></section>
+      </div>
+    </div>
+  </ModalShell>;
 }
 
 function ShareTaskDialog({ task, onClose }: { task: Task; onClose: () => void }) {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { void (async () => { try { setRecipients(await json<Recipient[]>(await authFetch(`/api/tasks/${task.id}/recipients`))); } finally { setLoading(false); } })(); }, [task.id]);
-  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-primary/35 p-0 sm:items-center sm:p-6"><section className="w-full max-w-lg rounded-t-2xl bg-card p-6 shadow-2xl sm:rounded-2xl"><div className="mb-5 flex items-start justify-between"><div><p className="mono-label text-emerald-700">Compartilhamento manual</p><h2 className="mt-1 text-xl font-extrabold">Enviar tarefa</h2><p className="mt-2 text-xs leading-5 text-muted-foreground">O WhatsApp abre no aparelho de Leonardo com a mensagem preenchida. O envio só acontece quando ele confirma no aplicativo.</p></div><button onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-muted" aria-label="Fechar"><X size={18} /></button></div>{loading ? <LoadingRows count={2} /> : recipients.length ? <div className="space-y-2">{recipients.map((recipient) => { const link = recipient.phone ? whatsappUrl(recipient.phone, task) : null; return <div key={`${recipient.role}-${recipient.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-border p-3"><div className="min-w-0"><p className="truncate text-xs font-extrabold">{recipient.name}</p><p className="text-[10px] text-muted-foreground">{recipient.role.replaceAll("_", " ")} · {recipient.phone}</p></div>{link && <a href={link} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-extrabold text-white"><MessageCircle size={13} /> WhatsApp</a>}</div>; })}</div> : <div className="rounded-xl bg-muted p-4 text-xs text-muted-foreground">Nenhum contato com telefone foi encontrado dentro do território da tarefa.</div>}<button onClick={onClose} className="mt-5 flex h-10 w-full items-center justify-center rounded-lg border border-border text-xs font-extrabold hover:bg-muted">Fechar</button></section></div>;
+  const [error, setError] = useState("");
+  useEffect(() => {
+    void (async () => {
+      try {
+        setRecipients(await json<Recipient[]>(await authFetch(`/api/tasks/${task.id}/recipients`)));
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "Não foi possível carregar os destinatários.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [task.id]);
+  return <ModalShell title="Enviar tarefa" eyebrow="Compartilhamento manual" onClose={onClose}>
+    <p className="mb-5 text-xs leading-5 text-muted-foreground">O WhatsApp abre no aparelho da pessoa com a mensagem preenchida. O envio só acontece quando ela confirma no aplicativo.</p>
+    {loading ? <LoadingRows count={2} /> : error ? <ErrorState label={error} onRetry={() => window.location.reload()} /> : recipients.length ? <div className="space-y-2" data-testid="recipient-list">{recipients.map((recipient) => { const link = recipient.phone ? whatsappUrl(recipient.phone, task) : null; return <div key={`${recipient.role}-${recipient.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-border p-3" data-testid={`recipient-${recipient.id}`}><div className="min-w-0"><p className="truncate text-xs font-extrabold">{recipient.name}</p><p className="text-[10px] text-muted-foreground">{recipient.role.replaceAll("_", " ")} · {recipient.phone}</p></div>{link && <a href={link} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-[10px] font-extrabold text-white" data-testid={`link-whatsapp-${recipient.id}`}><MessageCircle size={13} /> WhatsApp</a>}</div>; })}</div> : <div className="rounded-xl bg-muted p-4 text-xs text-muted-foreground" data-testid="empty-recipients">Nenhum contato com telefone foi encontrado dentro do território da tarefa.</div>}
+    <button onClick={onClose} className="mt-5 flex h-10 w-full items-center justify-center rounded-lg border border-border text-xs font-extrabold hover:bg-muted" data-testid="button-close-share">Fechar</button>
+  </ModalShell>;
+}
+
+function ModalShell({ title, eyebrow, onClose, children, wide = false }: { title: string; eyebrow: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  return <div className="fixed inset-0 z-50 flex items-end justify-center bg-primary/35 p-0 sm:items-center sm:p-6" role="dialog" aria-modal="true"><section className={`max-h-[94dvh] w-full overflow-y-auto rounded-t-2xl bg-card p-5 shadow-2xl sm:rounded-2xl sm:p-6 ${wide ? "max-w-6xl" : "max-w-lg"}`}><div className="mb-6 flex items-start justify-between gap-4"><div><p className="mono-label text-primary">{eyebrow}</p><h2 className="mt-1 text-xl font-extrabold tracking-tight" data-testid="modal-title">{title}</h2></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-muted" aria-label="Fechar" data-testid="button-close-modal"><X size={18} /></button></div>{children}</section></div>;
+}
+
+function FieldLabel({ label, children }: { label: string; children: ReactNode }) {
+  return <label className="block"><span className="mb-1.5 block text-xs font-bold">{label}</span>{children}</label>;
 }

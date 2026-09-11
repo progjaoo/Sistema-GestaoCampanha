@@ -3,10 +3,16 @@ import { Router, type IRouter } from "express";
 import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
 import {
   authUsersTable,
+  campaignBoardMembersTable,
+  campaignBoardsTable,
   campaignCalendarEventsTable,
   campaignCalendarSharesTable,
   campaignEventAcknowledgementsTable,
   campaignTasksTable,
+  campaignTaskActivityTable,
+  campaignTaskChecklistItemsTable,
+  campaignTaskCommentsTable,
+  campaignTaskMembersTable,
   citiesTable,
   coordinatorsTable,
   db,
@@ -63,6 +69,8 @@ async function taskById(id: number, principal: NonNullable<Express.Request["auth
       status: campaignTasksTable.status,
       priority: campaignTasksTable.priority,
       dueAt: campaignTasksTable.dueAt,
+      boardId: campaignTasksTable.boardId,
+      boardName: campaignBoardsTable.title,
       cityId: campaignTasksTable.cityId,
       cityName: citiesTable.name,
       regionName: regionsTable.name,
@@ -76,6 +84,7 @@ async function taskById(id: number, principal: NonNullable<Express.Request["auth
       updatedAt: campaignTasksTable.updatedAt,
     })
     .from(campaignTasksTable)
+    .leftJoin(campaignBoardsTable, eq(campaignBoardsTable.id, campaignTasksTable.boardId))
     .leftJoin(citiesTable, eq(citiesTable.id, campaignTasksTable.cityId))
     .leftJoin(regionsTable, eq(regionsTable.id, citiesTable.regionId))
     .leftJoin(leadershipsTable, eq(leadershipsTable.id, campaignTasksTable.leadershipId))
@@ -84,12 +93,501 @@ async function taskById(id: number, principal: NonNullable<Express.Request["auth
   return task;
 }
 
+async function boardById(id: number, principal: NonNullable<Express.Request["auth"]>) {
+  const [board] = await db
+    .select({
+      id: campaignBoardsTable.id,
+      title: campaignBoardsTable.title,
+      description: campaignBoardsTable.description,
+      cityId: campaignBoardsTable.cityId,
+      cityName: citiesTable.name,
+      regionName: regionsTable.name,
+      archived: campaignBoardsTable.archived,
+      createdByUserId: campaignBoardsTable.createdByUserId,
+      createdAt: campaignBoardsTable.createdAt,
+      updatedAt: campaignBoardsTable.updatedAt,
+    })
+    .from(campaignBoardsTable)
+    .innerJoin(citiesTable, eq(citiesTable.id, campaignBoardsTable.cityId))
+    .innerJoin(regionsTable, eq(regionsTable.id, citiesTable.regionId))
+    .where(and(eq(campaignBoardsTable.id, id), cityScopeCondition(principal)));
+  return board;
+}
+
+async function recordTaskActivity(
+  taskId: number,
+  actorUserId: number,
+  action: string,
+  detail?: string,
+) {
+  await db.insert(campaignTaskActivityTable).values({
+    taskId,
+    actorUserId,
+    action,
+    detail: detail ?? null,
+  });
+}
+
+async function userInTaskCity(
+  userId: number,
+  cityId: number | null,
+  principal: NonNullable<Express.Request["auth"]>,
+) {
+  if (!cityId) return undefined;
+  const [user] = await db
+    .select({ id: authUsersTable.id })
+    .from(authUsersTable)
+    .innerJoin(citiesTable, eq(citiesTable.id, authUsersTable.cityId))
+    .where(and(
+      eq(authUsersTable.id, userId),
+      eq(authUsersTable.cityId, cityId),
+      eq(authUsersTable.isActive, true),
+      cityScopeCondition(principal),
+    ));
+  return user;
+}
+
+async function taskDetailById(id: number, principal: NonNullable<Express.Request["auth"]>) {
+  const task = await taskById(id, principal);
+  if (!task) return undefined;
+  const [members, checklist, comments, activity] = await Promise.all([
+    db.select({
+      id: authUsersTable.id,
+      fullName: authUsersTable.fullName,
+      email: authUsersTable.email,
+      role: authUsersTable.role,
+      phone: authUsersTable.phone,
+    }).from(campaignTaskMembersTable)
+      .innerJoin(authUsersTable, eq(authUsersTable.id, campaignTaskMembersTable.userId))
+      .where(eq(campaignTaskMembersTable.taskId, id))
+      .orderBy(asc(authUsersTable.fullName)),
+    db.select({
+      id: campaignTaskChecklistItemsTable.id,
+      title: campaignTaskChecklistItemsTable.title,
+      completed: campaignTaskChecklistItemsTable.completed,
+      position: campaignTaskChecklistItemsTable.position,
+      createdAt: campaignTaskChecklistItemsTable.createdAt,
+      updatedAt: campaignTaskChecklistItemsTable.updatedAt,
+    }).from(campaignTaskChecklistItemsTable)
+      .where(eq(campaignTaskChecklistItemsTable.taskId, id))
+      .orderBy(asc(campaignTaskChecklistItemsTable.position), asc(campaignTaskChecklistItemsTable.createdAt)),
+    db.select({
+      id: campaignTaskCommentsTable.id,
+      body: campaignTaskCommentsTable.body,
+      createdAt: campaignTaskCommentsTable.createdAt,
+      updatedAt: campaignTaskCommentsTable.updatedAt,
+      userId: authUsersTable.id,
+      userName: authUsersTable.fullName,
+    }).from(campaignTaskCommentsTable)
+      .innerJoin(authUsersTable, eq(authUsersTable.id, campaignTaskCommentsTable.userId))
+      .where(eq(campaignTaskCommentsTable.taskId, id))
+      .orderBy(asc(campaignTaskCommentsTable.createdAt)),
+    db.select({
+      id: campaignTaskActivityTable.id,
+      action: campaignTaskActivityTable.action,
+      detail: campaignTaskActivityTable.detail,
+      createdAt: campaignTaskActivityTable.createdAt,
+      actorUserId: authUsersTable.id,
+      actorName: authUsersTable.fullName,
+    }).from(campaignTaskActivityTable)
+      .innerJoin(authUsersTable, eq(authUsersTable.id, campaignTaskActivityTable.actorUserId))
+      .where(eq(campaignTaskActivityTable.taskId, id))
+      .orderBy(desc(campaignTaskActivityTable.createdAt)),
+  ]);
+  return { ...task, members, checklist, comments, activity };
+}
+
+router.get(
+  "/boards",
+  requirePermission("boards:view"),
+  async (req, res): Promise<void> => {
+    const archived = req.query.archived === "true";
+    const boards = await db
+      .select({
+        id: campaignBoardsTable.id,
+        title: campaignBoardsTable.title,
+        description: campaignBoardsTable.description,
+        cityId: campaignBoardsTable.cityId,
+        cityName: citiesTable.name,
+        regionName: regionsTable.name,
+        archived: campaignBoardsTable.archived,
+        createdAt: campaignBoardsTable.createdAt,
+        updatedAt: campaignBoardsTable.updatedAt,
+      })
+      .from(campaignBoardsTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, campaignBoardsTable.cityId))
+      .innerJoin(regionsTable, eq(regionsTable.id, citiesTable.regionId))
+      .where(and(eq(campaignBoardsTable.archived, archived), cityScopeCondition(req.auth!)))
+      .orderBy(asc(citiesTable.name), desc(campaignBoardsTable.updatedAt));
+    res.json(boards);
+  },
+);
+
+router.get(
+  "/boards/:id",
+  requirePermission("boards:view"),
+  async (req, res): Promise<void> => {
+    const board = await boardById(Number(req.params.id), req.auth!);
+    if (!board) {
+      res.status(404).json({ error: "Quadro não encontrado." });
+      return;
+    }
+    const [members, tasks] = await Promise.all([
+      db.select({
+        id: authUsersTable.id,
+        fullName: authUsersTable.fullName,
+        email: authUsersTable.email,
+        role: authUsersTable.role,
+      }).from(campaignBoardMembersTable)
+        .innerJoin(authUsersTable, eq(authUsersTable.id, campaignBoardMembersTable.userId))
+        .where(eq(campaignBoardMembersTable.boardId, board.id))
+        .orderBy(asc(authUsersTable.fullName)),
+      db.select({ id: campaignTasksTable.id })
+        .from(campaignTasksTable)
+        .where(eq(campaignTasksTable.boardId, board.id)),
+    ]);
+    res.json({ ...board, members, taskCount: tasks.length });
+  },
+);
+
+router.post(
+  "/boards",
+  requirePermission("boards:create"),
+  async (req, res): Promise<void> => {
+    if (!record(req.body)) {
+      res.status(400).json({ error: "Dados inválidos." });
+      return;
+    }
+    const title = stringValue(req.body.title, true);
+    const cityId = numberValue(req.body.cityId);
+    if (!title || !cityId) {
+      res.status(400).json({ error: "Título e cidade são obrigatórios." });
+      return;
+    }
+    const [allowedCity] = await db.select({ id: citiesTable.id })
+      .from(citiesTable)
+      .where(and(eq(citiesTable.id, cityId), cityScopeCondition(req.auth!)));
+    if (!allowedCity) {
+      res.status(403).json({ error: "O território está fora do seu escopo." });
+      return;
+    }
+    const [created] = await db.transaction(async (tx) => {
+      const [board] = await tx.insert(campaignBoardsTable).values({
+        title,
+        description: stringValue(req.body.description),
+        cityId,
+        createdByUserId: req.auth!.user.id,
+      }).returning({ id: campaignBoardsTable.id });
+      await tx.insert(campaignBoardMembersTable).values({
+        boardId: board.id,
+        userId: req.auth!.user.id,
+        addedByUserId: req.auth!.user.id,
+      }).onConflictDoNothing();
+      return [board];
+    });
+    res.status(201).json(await boardById(created.id, req.auth!));
+  },
+);
+
+router.patch(
+  "/boards/:id",
+  requirePermission("boards:update"),
+  async (req, res): Promise<void> => {
+    const id = Number(req.params.id);
+    const existing = Number.isInteger(id) ? await boardById(id, req.auth!) : undefined;
+    if (!existing) {
+      res.status(404).json({ error: "Quadro não encontrado." });
+      return;
+    }
+    if (!record(req.body)) {
+      res.status(400).json({ error: "Dados inválidos." });
+      return;
+    }
+    const updates: Partial<typeof campaignBoardsTable.$inferInsert> = {};
+    if (req.body.title !== undefined) {
+      const title = stringValue(req.body.title, true);
+      if (!title) {
+        res.status(400).json({ error: "O título não pode ficar vazio." });
+        return;
+      }
+      updates.title = title;
+    }
+    if (req.body.description !== undefined) updates.description = stringValue(req.body.description);
+    if (Object.keys(updates).length) await db.update(campaignBoardsTable).set(updates).where(eq(campaignBoardsTable.id, id));
+    res.json(await boardById(id, req.auth!));
+  },
+);
+
+router.post(
+  "/boards/:id/archive",
+  requirePermission("boards:archive"),
+  async (req, res): Promise<void> => {
+    const id = Number(req.params.id);
+    const existing = Number.isInteger(id) ? await boardById(id, req.auth!) : undefined;
+    if (!existing) {
+      res.status(404).json({ error: "Quadro não encontrado." });
+      return;
+    }
+    const archived = record(req.body) && typeof req.body.archived === "boolean" ? req.body.archived : !existing.archived;
+    await db.update(campaignBoardsTable).set({ archived, updatedAt: new Date() }).where(eq(campaignBoardsTable.id, id));
+    res.json(await boardById(id, req.auth!));
+  },
+);
+
+router.post(
+  "/boards/:id/members",
+  requirePermission("boards:update"),
+  async (req, res): Promise<void> => {
+    const board = await boardById(Number(req.params.id), req.auth!);
+    const userId = record(req.body) ? numberValue(req.body.userId) : undefined;
+    if (!board) {
+      res.status(404).json({ error: "Quadro não encontrado." });
+      return;
+    }
+    if (!userId) {
+      res.status(400).json({ error: "Usuário inválido." });
+      return;
+    }
+    const [user] = await db.select({ id: authUsersTable.id })
+      .from(authUsersTable)
+      .where(and(eq(authUsersTable.id, userId), eq(authUsersTable.cityId, board.cityId), eq(authUsersTable.isActive, true)));
+    if (!user) {
+      res.status(400).json({ error: "O usuário precisa estar ativo na cidade do quadro." });
+      return;
+    }
+    await db.insert(campaignBoardMembersTable).values({
+      boardId: board.id,
+      userId,
+      addedByUserId: req.auth!.user.id,
+    }).onConflictDoNothing();
+    res.status(201).json({ success: true });
+  },
+);
+
+router.delete(
+  "/boards/:id/members/:userId",
+  requirePermission("boards:update"),
+  async (req, res): Promise<void> => {
+    const board = await boardById(Number(req.params.id), req.auth!);
+    const userId = Number(req.params.userId);
+    if (!board) {
+      res.status(404).json({ error: "Quadro não encontrado." });
+      return;
+    }
+    await db.delete(campaignBoardMembersTable).where(and(
+      eq(campaignBoardMembersTable.boardId, board.id),
+      eq(campaignBoardMembersTable.userId, userId),
+    ));
+    res.status(204).send();
+  },
+);
+
+router.get(
+  "/tasks/:id",
+  requirePermission("tasks:view"),
+  async (req, res): Promise<void> => {
+    const task = await taskDetailById(Number(req.params.id), req.auth!);
+    if (!task) {
+      res.status(404).json({ error: "Tarefa não encontrada." });
+      return;
+    }
+    res.json(task);
+  },
+);
+
+router.get(
+  "/tasks/:id/members/options",
+  requirePermission("tasks:collaborate"),
+  async (req, res): Promise<void> => {
+    const task = await taskById(Number(req.params.id), req.auth!);
+    if (!task || !task.cityId) {
+      res.status(404).json({ error: "Tarefa não encontrada." });
+      return;
+    }
+    const users = await db.select({
+      id: authUsersTable.id,
+      fullName: authUsersTable.fullName,
+      email: authUsersTable.email,
+      role: authUsersTable.role,
+      phone: authUsersTable.phone,
+    }).from(authUsersTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, authUsersTable.cityId))
+      .where(and(eq(authUsersTable.cityId, task.cityId), eq(authUsersTable.isActive, true), cityScopeCondition(req.auth!)))
+      .orderBy(asc(authUsersTable.fullName));
+    res.json(users);
+  },
+);
+
+router.post(
+  "/tasks/:id/members",
+  requirePermission("tasks:collaborate"),
+  async (req, res): Promise<void> => {
+    const task = await taskById(Number(req.params.id), req.auth!);
+    const userId = record(req.body) ? numberValue(req.body.userId) : undefined;
+    if (!task) {
+      res.status(404).json({ error: "Tarefa não encontrada." });
+      return;
+    }
+    if (!userId || !task.cityId) {
+      res.status(400).json({ error: "Usuário inválido." });
+      return;
+    }
+    const [user] = await db.select({ id: authUsersTable.id })
+      .from(authUsersTable)
+      .where(and(eq(authUsersTable.id, userId), eq(authUsersTable.cityId, task.cityId), eq(authUsersTable.isActive, true)));
+    if (!user) {
+      res.status(400).json({ error: "O usuário precisa estar ativo na cidade da tarefa." });
+      return;
+    }
+    await db.insert(campaignTaskMembersTable).values({
+      taskId: task.id,
+      userId,
+      addedByUserId: req.auth!.user.id,
+    }).onConflictDoNothing();
+    await recordTaskActivity(task.id, req.auth!.user.id, "member_added", `Membro adicionado: ${userId}.`);
+    res.status(201).json({ success: true });
+  },
+);
+
+router.delete(
+  "/tasks/:id/members/:userId",
+  requirePermission("tasks:collaborate"),
+  async (req, res): Promise<void> => {
+    const task = await taskById(Number(req.params.id), req.auth!);
+    const userId = Number(req.params.userId);
+    if (!task) {
+      res.status(404).json({ error: "Tarefa não encontrada." });
+      return;
+    }
+    await db.delete(campaignTaskMembersTable).where(and(
+      eq(campaignTaskMembersTable.taskId, task.id),
+      eq(campaignTaskMembersTable.userId, userId),
+    ));
+    await recordTaskActivity(task.id, req.auth!.user.id, "member_removed", `Membro removido: ${userId}.`);
+    res.status(204).send();
+  },
+);
+
+router.post(
+  "/tasks/:id/checklist",
+  requirePermission("tasks:collaborate"),
+  async (req, res): Promise<void> => {
+    const task = await taskById(Number(req.params.id), req.auth!);
+    const title = record(req.body) ? stringValue(req.body.title, true) : null;
+    if (!task) {
+      res.status(404).json({ error: "Tarefa não encontrada." });
+      return;
+    }
+    if (!title) {
+      res.status(400).json({ error: "O item do checklist não pode ficar vazio." });
+      return;
+    }
+    const [last] = await db.select({ position: campaignTaskChecklistItemsTable.position })
+      .from(campaignTaskChecklistItemsTable)
+      .where(eq(campaignTaskChecklistItemsTable.taskId, task.id))
+      .orderBy(desc(campaignTaskChecklistItemsTable.position))
+      .limit(1);
+    const [item] = await db.insert(campaignTaskChecklistItemsTable).values({
+      taskId: task.id,
+      title,
+      position: (last?.position ?? -1) + 1,
+      createdByUserId: req.auth!.user.id,
+    }).returning();
+    await recordTaskActivity(task.id, req.auth!.user.id, "checklist_added", title);
+    res.status(201).json(item);
+  },
+);
+
+router.patch(
+  "/tasks/:id/checklist/:itemId",
+  requirePermission("tasks:collaborate"),
+  async (req, res): Promise<void> => {
+    const task = await taskById(Number(req.params.id), req.auth!);
+    const itemId = Number(req.params.itemId);
+    if (!task) {
+      res.status(404).json({ error: "Tarefa não encontrada." });
+      return;
+    }
+    const [item] = await db.select().from(campaignTaskChecklistItemsTable).where(and(
+      eq(campaignTaskChecklistItemsTable.id, itemId),
+      eq(campaignTaskChecklistItemsTable.taskId, task.id),
+    ));
+    if (!item) {
+      res.status(404).json({ error: "Item do checklist não encontrado." });
+      return;
+    }
+    const updates: Partial<typeof campaignTaskChecklistItemsTable.$inferInsert> = {};
+    if (record(req.body) && typeof req.body.title === "string") {
+      const title = stringValue(req.body.title, true);
+      if (!title) {
+        res.status(400).json({ error: "O item do checklist não pode ficar vazio." });
+        return;
+      }
+      updates.title = title;
+    }
+    if (record(req.body) && typeof req.body.completed === "boolean") updates.completed = req.body.completed;
+    if (Object.keys(updates).length) await db.update(campaignTaskChecklistItemsTable).set(updates).where(eq(campaignTaskChecklistItemsTable.id, item.id));
+    await recordTaskActivity(task.id, req.auth!.user.id, "checklist_updated", updates.completed === undefined ? item.title : `${item.title}: ${updates.completed ? "concluído" : "reaberto"}`);
+    const [updated] = await db.select().from(campaignTaskChecklistItemsTable).where(eq(campaignTaskChecklistItemsTable.id, item.id));
+    res.json(updated);
+  },
+);
+
+router.delete(
+  "/tasks/:id/checklist/:itemId",
+  requirePermission("tasks:collaborate"),
+  async (req, res): Promise<void> => {
+    const task = await taskById(Number(req.params.id), req.auth!);
+    const itemId = Number(req.params.itemId);
+    if (!task) {
+      res.status(404).json({ error: "Tarefa não encontrada." });
+      return;
+    }
+    const [item] = await db.select({ title: campaignTaskChecklistItemsTable.title })
+      .from(campaignTaskChecklistItemsTable)
+      .where(and(eq(campaignTaskChecklistItemsTable.id, itemId), eq(campaignTaskChecklistItemsTable.taskId, task.id)));
+    if (!item) {
+      res.status(404).json({ error: "Item do checklist não encontrado." });
+      return;
+    }
+    await db.delete(campaignTaskChecklistItemsTable).where(eq(campaignTaskChecklistItemsTable.id, itemId));
+    await recordTaskActivity(task.id, req.auth!.user.id, "checklist_removed", item.title);
+    res.status(204).send();
+  },
+);
+
+router.post(
+  "/tasks/:id/comments",
+  requirePermission("tasks:collaborate"),
+  async (req, res): Promise<void> => {
+    const task = await taskById(Number(req.params.id), req.auth!);
+    const body = record(req.body) ? stringValue(req.body.body, true) : null;
+    if (!task) {
+      res.status(404).json({ error: "Tarefa não encontrada." });
+      return;
+    }
+    if (!body) {
+      res.status(400).json({ error: "O comentário não pode ficar vazio." });
+      return;
+    }
+    const [comment] = await db.insert(campaignTaskCommentsTable).values({
+      taskId: task.id,
+      userId: req.auth!.user.id,
+      body,
+    }).returning();
+    await recordTaskActivity(task.id, req.auth!.user.id, "commented", body.slice(0, 120));
+    res.status(201).json(comment);
+  },
+);
+
 router.get(
   "/tasks",
   requirePermission("tasks:view"),
   async (req, res): Promise<void> => {
     const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
     const conditions = [taskScope(req.auth!)];
+    const requestedBoardId = numberValue(req.query.boardId);
+    if (requestedBoardId) conditions.push(eq(campaignTasksTable.boardId, requestedBoardId));
     if (typeof req.query.status === "string" && ["todo", "in_progress", "blocked", "done"].includes(req.query.status)) {
       conditions.push(eq(campaignTasksTable.status, req.query.status));
     }
@@ -105,6 +603,8 @@ router.get(
         status: campaignTasksTable.status,
         priority: campaignTasksTable.priority,
         dueAt: campaignTasksTable.dueAt,
+        boardId: campaignTasksTable.boardId,
+        boardName: campaignBoardsTable.title,
         cityId: campaignTasksTable.cityId,
         cityName: citiesTable.name,
         regionName: regionsTable.name,
@@ -116,6 +616,7 @@ router.get(
         createdAt: campaignTasksTable.createdAt,
       })
       .from(campaignTasksTable)
+      .leftJoin(campaignBoardsTable, eq(campaignBoardsTable.id, campaignTasksTable.boardId))
       .leftJoin(citiesTable, eq(citiesTable.id, campaignTasksTable.cityId))
       .leftJoin(regionsTable, eq(regionsTable.id, citiesTable.regionId))
       .leftJoin(leadershipsTable, eq(leadershipsTable.id, campaignTasksTable.leadershipId))
@@ -154,10 +655,23 @@ router.post(
       res.status(403).json({ error: "O território está fora do seu escopo." });
       return;
     }
+    const boardId = numberValue(req.body.boardId) ?? null;
+    if (boardId) {
+      const board = await boardById(boardId, req.auth!);
+      if (!board || board.archived || board.cityId !== cityId) {
+        res.status(400).json({ error: "O quadro selecionado não pertence à cidade ou está arquivado." });
+        return;
+      }
+    }
     const dueAt = req.body.dueAt === null ? null : dateValue(req.body.dueAt);
     const leadershipPhone = stringValue(req.body.leadershipPhone);
     if (leadershipPhone && !normalizeWhatsAppPhone(leadershipPhone)) {
       res.status(400).json({ error: "Informe um telefone válido com DDD para a liderança." });
+      return;
+    }
+    const assigneeUserId = numberValue(req.body.assigneeUserId) ?? null;
+    if (assigneeUserId && !(await userInTaskCity(assigneeUserId, cityId, req.auth!))) {
+      res.status(400).json({ error: "O responsável precisa estar ativo no território da tarefa." });
       return;
     }
     const [created] = await db.transaction(async (tx) => {
@@ -172,12 +686,14 @@ router.post(
         status: ["todo", "in_progress", "blocked", "done"].includes(String(req.body.status)) ? String(req.body.status) : "todo",
         priority: ["low", "normal", "high", "urgent"].includes(String(req.body.priority)) ? String(req.body.priority) : "normal",
         dueAt,
+        boardId,
         cityId,
         leadershipId,
-        assigneeUserId: numberValue(req.body.assigneeUserId) ?? null,
+        assigneeUserId,
         createdByUserId: req.auth!.user.id,
       }).returning({ id: campaignTasksTable.id });
     });
+    await recordTaskActivity(created.id, req.auth!.user.id, "created", "Tarefa criada.");
     res.status(201).json(await taskById(created.id, req.auth!));
   },
 );
@@ -209,8 +725,30 @@ router.patch(
     if (req.body.status !== undefined && ["todo", "in_progress", "blocked", "done"].includes(String(req.body.status))) updates.status = String(req.body.status);
     if (req.body.priority !== undefined && ["low", "normal", "high", "urgent"].includes(String(req.body.priority))) updates.priority = String(req.body.priority);
     if (req.body.dueAt !== undefined) updates.dueAt = req.body.dueAt === null ? null : dateValue(req.body.dueAt);
-    if (req.body.assigneeUserId !== undefined) updates.assigneeUserId = numberValue(req.body.assigneeUserId) ?? null;
+    if (req.body.assigneeUserId !== undefined) {
+      const assigneeUserId = numberValue(req.body.assigneeUserId) ?? null;
+      if (assigneeUserId && !(await userInTaskCity(assigneeUserId, existing.cityId, req.auth!))) {
+        res.status(400).json({ error: "O responsável precisa estar ativo no território da tarefa." });
+        return;
+      }
+      updates.assigneeUserId = assigneeUserId;
+    }
+    if (req.body.boardId !== undefined) {
+      const boardId = numberValue(req.body.boardId) ?? null;
+      if (boardId) {
+        const board = await boardById(boardId, req.auth!);
+        if (!board || board.archived || board.cityId !== existing.cityId) {
+          res.status(400).json({ error: "O quadro selecionado não pertence à cidade ou está arquivado." });
+          return;
+        }
+      }
+      updates.boardId = boardId;
+    }
     if (Object.keys(updates).length) await db.update(campaignTasksTable).set(updates).where(eq(campaignTasksTable.id, id));
+    if (Object.keys(updates).length) {
+      const changedFields = Object.keys(updates).join(", ");
+      await recordTaskActivity(id, req.auth!.user.id, "updated", `Campos atualizados: ${changedFields}.`);
+    }
     res.json(await taskById(id, req.auth!));
   },
 );
