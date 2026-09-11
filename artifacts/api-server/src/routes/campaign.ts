@@ -329,6 +329,10 @@ router.post("/leaderships", requirePermission("leaderships:create"), async (req,
     res.status(400).json({ error: body.error.message });
     return;
   }
+  if (!body.data.cityId) {
+    res.status(400).json({ error: "A cidade é obrigatória." });
+    return;
+  }
   const [allowedCity] = await db
     .select({ id: citiesTable.id })
     .from(citiesTable)
@@ -355,7 +359,7 @@ router.post("/leaderships", requirePermission("leaderships:create"), async (req,
   res.status(201).json(GetLeadershipResponse.parse(record));
 });
 
-router.get("/leaderships/:id", async (req, res): Promise<void> => {
+router.get("/leaderships/:id", requirePermission("leaderships:view"), async (req, res): Promise<void> => {
   const params = GetLeadershipParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -369,7 +373,7 @@ router.get("/leaderships/:id", async (req, res): Promise<void> => {
   res.json(GetLeadershipResponse.parse(record));
 });
 
-router.patch("/leaderships/:id", async (req, res): Promise<void> => {
+router.patch("/leaderships/:id", requirePermission("leaderships:update"), async (req, res): Promise<void> => {
   const params = UpdateLeadershipParams.safeParse(req.params);
   const body = UpdateLeadershipBody.safeParse(req.body);
   if (!params.success) {
@@ -381,6 +385,20 @@ router.patch("/leaderships/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  const existing = await getLeadershipById(params.data.id, req.auth!);
+  if (!existing) {
+    res.status(404).json({ error: "Leadership not found" });
+    return;
+  }
+  const cityId = body.data.cityId ?? existing.cityId;
+  const [allowedCity] = await db
+    .select({ id: citiesTable.id })
+    .from(citiesTable)
+    .where(and(eq(citiesTable.id, cityId), cityScopeCondition(req.auth!)));
+  if (!allowedCity) {
+    res.status(403).json({ error: "A cidade está fora do seu escopo." });
+    return;
+  }
   const [updated] = await db
     .update(leadershipsTable)
     .set({ ...body.data, updatedAt: new Date() })
@@ -392,6 +410,21 @@ router.patch("/leaderships/:id", async (req, res): Promise<void> => {
   }
   const record = await getLeadershipById(updated.id, req.auth!);
   res.json(UpdateLeadershipResponse.parse(record));
+});
+
+router.delete("/leaderships/:id", requirePermission("leaderships:delete"), async (req, res): Promise<void> => {
+  const params = GetLeadershipParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const existing = await getLeadershipById(params.data.id, req.auth!);
+  if (!existing) {
+    res.status(404).json({ error: "Leadership not found" });
+    return;
+  }
+  await db.delete(leadershipsTable).where(eq(leadershipsTable.id, params.data.id));
+  res.status(204).send();
 });
 
 router.get("/review/issues", async (req, res): Promise<void> => {
