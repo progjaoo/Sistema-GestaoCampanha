@@ -8,6 +8,7 @@ import OverviewPage from '@/pages/overview';
 import LeadershipsPage from '@/pages/leaderships';
 import LeadershipDetailPage from '@/pages/leadership-detail';
 import ReviewPage from '@/pages/review';
+import CoveragePage from '@/pages/coverage';
 import {
   Route,
   Switch,
@@ -24,6 +25,7 @@ function Router() {
     <RoutedErrorBoundary>
       <Switch>
         <Route path="/" component={OverviewPage} />
+        <Route path="/cobertura" component={CoveragePage} />
         <Route path="/liderancas" component={LeadershipsPage} />
         <Route path="/liderancas/:id" component={LeadershipDetailPage} />
         <Route path="/revisao" component={ReviewPage} />

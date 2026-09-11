@@ -4,7 +4,8 @@ import { Link, useLocation } from 'wouter';
 
 const navItems = [
   { href: '/', label: 'Visão geral', icon: BarChart3 },
-  { href: '/liderancas', label: 'Lideranças', icon: UsersRound },
+  { href: '/cobertura', label: 'Cobertura', icon: Map },
+  { href: '/liderancas', label: 'Pessoas', icon: UsersRound },
   { href: '/revisao', label: 'Revisão', icon: ClipboardCheck },
 ];
 
@@ -65,7 +66,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
               <ShieldCheck size={16} className="text-primary" />
               <span>Operações de campo</span>
               <span className="text-border">/</span>
-              <span className="font-semibold text-foreground">{location === '/' ? 'Resumo da campanha' : location.startsWith('/revisao') ? 'Fila de revisão' : 'Base de lideranças'}</span>
+              <span className="font-semibold text-foreground">{location === '/' ? 'Resumo da campanha' : location.startsWith('/cobertura') ? 'Cobertura territorial' : location.startsWith('/revisao') ? 'Fila de revisão' : 'Cadastro de pessoas'}</span>
             </div>
             <div className="sm:hidden">
               <div className="text-sm font-extrabold">EA 2026</div>
