@@ -1,5 +1,11 @@
 import { Router, type IRouter } from "express";
 import {
+  cityScopeCondition,
+  coverageScopeCondition,
+  leadershipScopeCondition,
+} from "../lib/auth";
+import { requirePermission } from "../middlewares/auth";
+import {
   and,
   asc,
   desc,
@@ -69,7 +75,7 @@ function parseId(value: string | string[] | undefined): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
-async function getLeadershipById(id: number) {
+async function getLeadershipById(id: number, principal: NonNullable<import("express").Request["auth"]>) {
   const [record] = await db
     .select(leadershipSelection)
     .from(leadershipsTable)
@@ -87,14 +93,15 @@ async function getLeadershipById(id: number) {
       federalDeputiesTable,
       eq(federalDeputiesTable.id, leadershipsTable.federalDeputyId),
     )
-    .where(eq(leadershipsTable.id, id));
+    .where(and(eq(leadershipsTable.id, id), leadershipScopeCondition(principal)));
   return record;
 }
 
-router.get("/campaign/overview", async (_req, res): Promise<void> => {
+router.get("/campaign/overview", async (req, res): Promise<void> => {
+  const principal = req.auth!;
   const [regions, cities, leaderships] = await Promise.all([
     db.select().from(regionsTable),
-    db.select().from(citiesTable),
+    db.select().from(citiesTable).where(coverageScopeCondition(principal)),
     db
       .select({
         cityId: leadershipsTable.cityId,
@@ -103,11 +110,15 @@ router.get("/campaign/overview", async (_req, res): Promise<void> => {
         needsReview: leadershipsTable.needsReview,
       })
       .from(leadershipsTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, leadershipsTable.cityId))
       .leftJoin(
         federalDeputiesTable,
         eq(federalDeputiesTable.id, leadershipsTable.federalDeputyId),
-      ),
+      )
+      .where(leadershipScopeCondition(principal)),
   ]);
+  const visibleRegionIds = new Set(cities.map((city) => city.regionId));
+  const visibleRegions = regions.filter((region) => visibleRegionIds.has(region.id));
 
   const regionRows = regions.map((region) => ({
     id: region.id,
@@ -130,12 +141,12 @@ router.get("/campaign/overview", async (_req, res): Promise<void> => {
 
   const data = {
     totals: {
-      regions: regions.length,
+    regions: visibleRegions.length,
       cities: cities.length,
       leaderships: leaderships.length,
       reviewItems: leaderships.filter((leadership) => leadership.needsReview).length,
     },
-    regions: regionRows.sort((a, b) => b.leadershipCount - a.leadershipCount),
+    regions: regionRows.filter((region) => visibleRegionIds.has(region.id)).sort((a, b) => b.leadershipCount - a.leadershipCount),
     topDeputies: [...deputyCounts.entries()]
       .map(([name, leadershipCount]) => ({ name, leadershipCount }))
       .sort((a, b) => b.leadershipCount - a.leadershipCount)
@@ -145,14 +156,20 @@ router.get("/campaign/overview", async (_req, res): Promise<void> => {
   res.json(GetCampaignOverviewResponse.parse(data));
 });
 
-router.get("/regions", async (_req, res): Promise<void> => {
+router.get("/regions", async (req, res): Promise<void> => {
+  const principal = req.auth!;
   const [regions, cities, leaderships] = await Promise.all([
     db.select().from(regionsTable).orderBy(asc(regionsTable.name)),
-    db.select().from(citiesTable),
-    db.select({ cityId: leadershipsTable.cityId }).from(leadershipsTable),
+    db.select().from(citiesTable).where(coverageScopeCondition(principal)),
+    db
+      .select({ cityId: leadershipsTable.cityId })
+      .from(leadershipsTable)
+      .innerJoin(citiesTable, eq(citiesTable.id, leadershipsTable.cityId))
+      .where(leadershipScopeCondition(principal)),
   ]);
+  const visibleRegionIds = new Set(cities.map((city) => city.regionId));
 
-  const data = regions.map((region) => ({
+  const data = regions.filter((region) => visibleRegionIds.has(region.id)).map((region) => ({
     id: region.id,
     name: region.name,
     cityCount: cities.filter((city) => city.regionId === region.id).length,
@@ -172,6 +189,7 @@ router.get("/cities", async (req, res): Promise<void> => {
   }
 
   const filters = and(
+    coverageScopeCondition(req.auth!),
     query.data.regionId ? eq(citiesTable.regionId, query.data.regionId) : undefined,
     query.data.federalDeputyId
       ? eq(leadershipsTable.federalDeputyId, query.data.federalDeputyId)
@@ -196,7 +214,7 @@ router.get("/cities", async (req, res): Promise<void> => {
   res.json(ListCitiesResponse.parse(cities));
 });
 
-router.get("/deputies", async (_req, res): Promise<void> => {
+router.get("/deputies", async (req, res): Promise<void> => {
   const deputies = await db
     .select({
       id: federalDeputiesTable.id,
@@ -210,6 +228,8 @@ router.get("/deputies", async (_req, res): Promise<void> => {
       leadershipsTable,
       eq(leadershipsTable.federalDeputyId, federalDeputiesTable.id),
     )
+    .leftJoin(citiesTable, eq(citiesTable.id, leadershipsTable.cityId))
+    .where(leadershipScopeCondition(req.auth!))
     .groupBy(federalDeputiesTable.id)
     .orderBy(desc(federalDeputiesTable.isAlliance), desc(sql`count(${leadershipsTable.id})`), asc(federalDeputiesTable.canonicalName));
 
@@ -224,6 +244,7 @@ router.get("/leaderships", async (req, res): Promise<void> => {
   }
 
   const conditions = [];
+  conditions.push(leadershipScopeCondition(req.auth!));
   if (query.data.regionId) conditions.push(eq(regionsTable.id, query.data.regionId));
   if (query.data.cityId) conditions.push(eq(citiesTable.id, query.data.cityId));
   if (query.data.federalDeputyId) {
@@ -302,10 +323,18 @@ router.get("/leaderships", async (req, res): Promise<void> => {
   );
 });
 
-router.post("/leaderships", async (req, res): Promise<void> => {
+router.post("/leaderships", requirePermission("leaderships:create"), async (req, res): Promise<void> => {
   const body = CreateLeadershipBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
+    return;
+  }
+  const [allowedCity] = await db
+    .select({ id: citiesTable.id })
+    .from(citiesTable)
+    .where(and(eq(citiesTable.id, body.data.cityId), cityScopeCondition(req.auth!)));
+  if (!allowedCity) {
+    res.status(403).json({ error: "A cidade está fora do seu escopo." });
     return;
   }
 
@@ -322,7 +351,7 @@ router.post("/leaderships", async (req, res): Promise<void> => {
       needsReview: false,
     })
     .returning();
-  const record = await getLeadershipById(created.id);
+  const record = await getLeadershipById(created.id, req.auth!);
   res.status(201).json(GetLeadershipResponse.parse(record));
 });
 
@@ -332,7 +361,7 @@ router.get("/leaderships/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const record = await getLeadershipById(params.data.id);
+  const record = await getLeadershipById(params.data.id, req.auth!);
   if (!record) {
     res.status(404).json({ error: "Leadership not found" });
     return;
@@ -361,7 +390,7 @@ router.patch("/leaderships/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Leadership not found" });
     return;
   }
-  const record = await getLeadershipById(updated.id);
+  const record = await getLeadershipById(updated.id, req.auth!);
   res.json(UpdateLeadershipResponse.parse(record));
 });
 
@@ -391,7 +420,8 @@ router.get("/review/issues", async (req, res): Promise<void> => {
       leadershipsTable,
       eq(leadershipsTable.id, reviewIssuesTable.leadershipId),
     )
-    .where(where)
+    .innerJoin(citiesTable, eq(citiesTable.id, leadershipsTable.cityId))
+    .where(and(where, leadershipScopeCondition(req.auth!)))
     .orderBy(desc(reviewIssuesTable.createdAt));
   res.json(ListReviewIssuesResponse.parse(issues));
 });

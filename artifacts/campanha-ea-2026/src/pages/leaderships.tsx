@@ -2,9 +2,11 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { ChevronLeft, ChevronRight, Filter, Plus, Search, X } from 'lucide-react';
 import { Link } from 'wouter';
 import { useCreateLeadership, useListCities, useListFederalDeputies, useListLeaderships } from '@workspace/api-client-react';
+import { useAuth } from '@/lib/auth';
 import { EmptyState, ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from '@/components/ops-shell';
 
 export default function LeadershipsPage() {
+  const { can } = useAuth();
   const [search, setSearch] = useState('');
   const [cityId, setCityId] = useState<number | undefined>();
   const [federalDeputyId, setFederalDeputyId] = useState<number | undefined>();
@@ -21,7 +23,7 @@ export default function LeadershipsPage() {
     sortDirection: sortBy === 'status' ? ('desc' as const) : ('asc' as const),
     page,
     pageSize: 12,
-  }), [search, cityId, reviewOnly, page]);
+  }), [search, cityId, federalDeputyId, reviewOnly, sortBy, page]);
   const query = useListLeaderships(params);
   const cities = useListCities();
   const deputies = useListFederalDeputies();
@@ -68,7 +70,7 @@ export default function LeadershipsPage() {
       eyebrow="Cadastro único / pessoas"
       title="Cadastro único de pessoas"
       description="Nome, contato, papel e localidade ficam relacionados sem repetir a pessoa nas visões de território e apoio."
-      action={<button onClick={() => setShowCreate(true)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5" data-testid="button-create-leadership"><Plus size={15} /> Nova pessoa</button>}
+      action={can('leaderships:create') ? <button onClick={() => setShowCreate(true)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5" data-testid="button-create-leadership"><Plus size={15} /> Nova pessoa</button> : undefined}
     />
     <div className="mb-5 rounded-2xl border border-border bg-card p-3 shadow-[0_8px_30px_hsl(193_30%_15%_/.03)] sm:p-4">
       <div className="flex flex-col gap-3 lg:flex-row">

@@ -10,6 +10,9 @@ import LeadershipDetailPage from '@/pages/leadership-detail';
 import ReviewPage from '@/pages/review';
 import CoveragePage from '@/pages/coverage';
 import DeputiesPage from '@/pages/deputies';
+import LoginPage from '@/pages/login';
+import AccessControlPage from '@/pages/access-control';
+import { AuthProvider, useAuth } from '@/lib/auth';
 import {
   Route,
   Switch,
@@ -31,6 +34,7 @@ function Router() {
         <Route path="/liderancas" component={LeadershipsPage} />
         <Route path="/liderancas/:id" component={LeadershipDetailPage} />
         <Route path="/revisao" component={ReviewPage} />
+        <Route path="/acessos" component={AccessControlPage} />
         <Route component={NotFound} />
       </Switch>
     </RoutedErrorBoundary>
@@ -46,13 +50,22 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
-        </WouterRouter>
+        <AuthProvider>
+          <AuthenticatedApp />
+        </AuthProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
   );
+}
+
+function AuthenticatedApp() {
+  const { isLoading, isAuthenticated } = useAuth();
+  if (isLoading) {
+    return <div className="flex min-h-[100dvh] items-center justify-center bg-background text-sm font-bold text-muted-foreground">Carregando acesso…</div>;
+  }
+  if (!isAuthenticated) return <LoginPage />;
+  return <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router /></WouterRouter>;
 }
 
 export default App;

@@ -10,12 +10,18 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Email and password authentication
+  - name: access-control
+    description: Users, roles and permissions
   - name: campaign
     description: Campaign overview and coverage
   - name: leaderships
     description: Leadership records
   - name: review
     description: Import and data quality review
+security:
+  - BearerAuth: []
 paths:
   /healthz:
     get:
@@ -23,6 +29,7 @@ paths:
       tags: [health]
       summary: Health check
       description: Returns server health status
+      security: []
       responses:
         "200":
           description: Healthy
@@ -30,6 +37,134 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Authenticate with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLogin"
+      responses:
+        "200":
+          description: Authenticated session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Get the authenticated user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: "#/components/schemas/AuthUser"
+                required: [user]
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: End the current client session
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                required: [success]
+  /auth/rbac/roles:
+    get:
+      operationId: listRolesAndPermissions
+      tags: [access-control]
+      summary: List the RBAC permission matrix
+      responses:
+        "200":
+          description: Roles and permissions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRbac"
+  /auth/rbac/roles/{role}:
+    patch:
+      operationId: updateRolePermissions
+      tags: [access-control]
+      summary: Update the permissions assigned to a role
+      parameters:
+        - $ref: "#/components/parameters/AuthRole"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRolePermissionsInput"
+      responses:
+        "200":
+          description: Updated role
+  /auth/users:
+    get:
+      operationId: listAuthUsers
+      tags: [access-control]
+      summary: List system users
+      responses:
+        "200":
+          description: User list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuthUserAdmin"
+    post:
+      operationId: createAuthUser
+      tags: [access-control]
+      summary: Create a system user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthUserInput"
+      responses:
+        "201":
+          description: User created
+  /auth/users/{id}:
+    patch:
+      operationId: updateAuthUser
+      tags: [access-control]
+      summary: Update a system user
+      parameters:
+        - $ref: "#/components/parameters/AuthUserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthUserUpdate"
+      responses:
+        "200":
+          description: User updated
   /campaign/overview:
     get:
       operationId: getCampaignOverview
@@ -227,6 +362,11 @@ paths:
                 items:
                   $ref: "#/components/schemas/ReviewIssue"
 components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
     RegionId:
       in: query
@@ -253,6 +393,20 @@ components:
       schema:
         type: integer
         minimum: 1
+    AuthRole:
+      in: path
+      name: role
+      required: true
+      schema:
+        type: string
+        enum: [ADMIN_GERAL, ARTICULADOR, COORDENADOR, LIDERANCA]
+    AuthUserId:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
+        minimum: 1
   schemas:
     HealthStatus:
       type: object
@@ -267,6 +421,148 @@ components:
         error:
           type: string
       required: [error]
+    AuthLogin:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+      required: [email, password]
+    AuthUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        fullName:
+          type: string
+        role:
+          type: string
+        regionId:
+          type: ["integer", "null"]
+        cityId:
+          type: ["integer", "null"]
+        leadershipId:
+          type: ["integer", "null"]
+        isActive:
+          type: boolean
+        canCreateLeaderUsers:
+          type: boolean
+        permissions:
+          type: array
+          items:
+            type: string
+      required: [id, email, fullName, role, regionId, cityId, leadershipId, isActive, canCreateLeaderUsers, permissions]
+    AuthSession:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/AuthUser"
+      required: [token, user]
+    AuthPermission:
+      type: object
+      properties:
+        id:
+          type: integer
+        key:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+      required: [id, key, label, description, category]
+    AuthRole:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        description:
+          type: string
+        userCount:
+          type: integer
+        permissionKeys:
+          type: array
+          items:
+            type: string
+      required: [key, label, description, userCount, permissionKeys]
+    AuthRbac:
+      type: object
+      properties:
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthRole"
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuthPermission"
+      required: [roles, permissions]
+    AuthRolePermissionsInput:
+      type: object
+      properties:
+        permissionKeys:
+          type: array
+          items:
+            type: string
+      required: [permissionKeys]
+    AuthUserInput:
+      allOf:
+        - $ref: "#/components/schemas/AuthUserUpdate"
+        - type: object
+          properties:
+            email:
+              type: string
+              format: email
+            password:
+              type: string
+              minLength: 8
+          required: [email, password, fullName, role]
+    AuthUserUpdate:
+      type: object
+      properties:
+        fullName:
+          type: string
+        role:
+          type: string
+        regionId:
+          type: ["integer", "null"]
+        cityId:
+          type: ["integer", "null"]
+        leadershipId:
+          type: ["integer", "null"]
+        isActive:
+          type: boolean
+        canCreateLeaderUsers:
+          type: boolean
+        password:
+          type: string
+          minLength: 8
+      required: [fullName, role]
+    AuthUserAdmin:
+      allOf:
+        - $ref: "#/components/schemas/AuthUser"
+        - type: object
+          properties:
+            regionName:
+              type: ["string", "null"]
+            cityName:
+              type: ["string", "null"]
+            lastLoginAt:
+              type: ["string", "null"]
+              format: date-time
+            createdAt:
+              type: string
+              format: date-time
     Region:
       type: object
       properties:

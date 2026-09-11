@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { BarChart3, ChevronRight, ClipboardCheck, Handshake, Map, Menu, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
+import { useAuth } from '@/lib/auth';
 
 const navItems = [
   { href: '/', label: 'Visão geral', icon: BarChart3 },
@@ -8,12 +9,15 @@ const navItems = [
   { href: '/dobrados', label: 'Dobrados', icon: Handshake },
   { href: '/liderancas', label: 'Pessoas', icon: UsersRound },
   { href: '/revisao', label: 'Revisão', icon: ClipboardCheck },
+  { href: '/acessos', label: 'Acessos', icon: ShieldCheck, permission: 'rbac:manage' },
 ];
 
 export function OpsShell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const { user, can, logout } = useAuth();
   const active = (href: string) => href === '/' ? location === '/' : location.startsWith(href);
+  const visibleNavItems = navItems.filter((item) => !item.permission || can(item.permission));
 
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
@@ -37,7 +41,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
           <div className="px-4">
             <p className="mono-label mb-3 px-3 text-sidebar-foreground/45">Navegação</p>
             <nav className="space-y-1">
-              {navItems.map(({ href, label, icon: Icon }) => (
+          {visibleNavItems.map(({ href, label, icon: Icon }) => (
                 <Link key={href} href={href} onClick={() => setOpen(false)} className={`group flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold transition-colors ${active(href) ? 'bg-sidebar-primary text-sidebar-primary-foreground' : 'text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground'}`} data-testid={`link-nav-${label.toLowerCase().replaceAll(' ', '-')}`}>
                   <Icon size={17} strokeWidth={active(href) ? 2.5 : 1.8} />
                   <span>{label}</span>
@@ -67,7 +71,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
               <ShieldCheck size={16} className="text-primary" />
               <span>Operações de campo</span>
               <span className="text-border">/</span>
-              <span className="font-semibold text-foreground">{location === '/' ? 'Resumo da campanha' : location.startsWith('/cobertura') ? 'Cobertura territorial' : location.startsWith('/dobrados') ? 'Apoio federal' : location.startsWith('/revisao') ? 'Fila de revisão' : 'Cadastro de pessoas'}</span>
+              <span className="font-semibold text-foreground">{location === '/' ? 'Resumo da campanha' : location.startsWith('/cobertura') ? 'Cobertura territorial' : location.startsWith('/dobrados') ? 'Apoio federal' : location.startsWith('/acessos') ? 'Controle de acesso' : location.startsWith('/revisao') ? 'Fila de revisão' : 'Cadastro de pessoas'}</span>
             </div>
             <div className="sm:hidden">
               <div className="text-sm font-extrabold">EA 2026</div>
@@ -78,13 +82,14 @@ export function OpsShell({ children }: { children: ReactNode }) {
             <Link href="/liderancas" className="hidden items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground sm:flex" data-testid="link-quick-search">
               <Search size={14} /> Busca rápida
             </Link>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-extrabold text-primary-foreground" data-testid="avatar-operator">OP</div>
+            <div className="hidden text-right sm:block"><p className="text-xs font-extrabold">{user?.fullName}</p><p className="mono-label text-muted-foreground">{user?.role.replaceAll('_', ' ')}</p></div>
+            <button onClick={() => void logout()} className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-extrabold text-primary-foreground transition hover:opacity-80" title="Sair" aria-label="Sair do sistema" data-testid="button-logout">{user?.fullName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</button>
           </div>
         </header>
         <main className="mx-auto max-w-[1440px] px-4 pb-24 pt-7 sm:px-7 lg:px-10 lg:pb-10">{children}</main>
       </div>
       <nav className="fixed bottom-0 left-0 right-0 z-20 flex border-t border-border bg-card/95 px-2 py-2 backdrop-blur-md md:hidden">
-        {navItems.map(({ href, label, icon: Icon }) => (
+        {visibleNavItems.map(({ href, label, icon: Icon }) => (
           <Link key={href} href={href} className={`flex flex-1 flex-col items-center gap-1 rounded-lg py-2 text-[10px] font-bold ${active(href) ? 'text-primary' : 'text-muted-foreground'}`} data-testid={`link-mobile-${label.toLowerCase().replaceAll(' ', '-')}`}>
             <Icon size={18} />
             {label}

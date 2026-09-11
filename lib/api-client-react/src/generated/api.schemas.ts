@@ -13,6 +13,89 @@ export interface Error {
   error: string;
 }
 
+export interface AuthLogin {
+  email: string;
+  /** @minLength 1 */
+  password: string;
+}
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  fullName: string;
+  role: string;
+  /** @nullable */
+  regionId: number | null;
+  /** @nullable */
+  cityId: number | null;
+  /** @nullable */
+  leadershipId: number | null;
+  isActive: boolean;
+  canCreateLeaderUsers: boolean;
+  permissions: string[];
+}
+
+export interface AuthSession {
+  token: string;
+  user: AuthUser;
+}
+
+export interface AuthPermission {
+  id: number;
+  key: string;
+  label: string;
+  description: string;
+  category: string;
+}
+
+export interface AuthRole {
+  key: string;
+  label: string;
+  description: string;
+  userCount: number;
+  permissionKeys: string[];
+}
+
+export interface AuthRbac {
+  roles: AuthRole[];
+  permissions: AuthPermission[];
+}
+
+export interface AuthRolePermissionsInput {
+  permissionKeys: string[];
+}
+
+export interface AuthUserUpdate {
+  fullName: string;
+  role: string;
+  /** @nullable */
+  regionId?: number | null;
+  /** @nullable */
+  cityId?: number | null;
+  /** @nullable */
+  leadershipId?: number | null;
+  isActive?: boolean;
+  canCreateLeaderUsers?: boolean;
+  /** @minLength 8 */
+  password?: string;
+}
+
+export type AuthUserInput = AuthUserUpdate & {
+  email: string;
+  /** @minLength 8 */
+  password: string;
+};
+
+export type AuthUserAdmin = AuthUser & ({
+  /** @nullable */
+  regionName?: string | null;
+  /** @nullable */
+  cityName?: string | null;
+  /** @nullable */
+  lastLoginAt?: string | null;
+  createdAt?: string;
+});
+
 export interface Region {
   id: number;
   name: string;
@@ -180,6 +263,14 @@ export type RegionIdParameter = number;
 export type CityIdParameter = number;
 
 export type FederalDeputyIdParameter = number;
+
+export type GetCurrentUser200 = {
+  user: AuthUser;
+};
+
+export type Logout200 = {
+  success: boolean;
+};
 
 export type ListCitiesParams = {
 /**

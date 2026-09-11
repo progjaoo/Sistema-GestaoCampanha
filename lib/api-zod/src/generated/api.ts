@@ -18,6 +18,173 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * @summary Authenticate with email and password
+ */
+
+
+
+export const LoginBody = zod.object({
+  "email": zod.string().email(),
+  "password": zod.string().min(1)
+})
+
+export const LoginResponse = zod.object({
+  "token": zod.string(),
+  "user": zod.object({
+  "id": zod.number().int(),
+  "email": zod.string(),
+  "fullName": zod.string(),
+  "role": zod.string(),
+  "regionId": zod.number().int().nullable(),
+  "cityId": zod.number().int().nullable(),
+  "leadershipId": zod.number().int().nullable(),
+  "isActive": zod.boolean(),
+  "canCreateLeaderUsers": zod.boolean(),
+  "permissions": zod.array(zod.string())
+})
+})
+
+
+/**
+ * @summary Get the authenticated user
+ */
+export const GetCurrentUserResponse = zod.object({
+  "user": zod.object({
+  "id": zod.number().int(),
+  "email": zod.string(),
+  "fullName": zod.string(),
+  "role": zod.string(),
+  "regionId": zod.number().int().nullable(),
+  "cityId": zod.number().int().nullable(),
+  "leadershipId": zod.number().int().nullable(),
+  "isActive": zod.boolean(),
+  "canCreateLeaderUsers": zod.boolean(),
+  "permissions": zod.array(zod.string())
+})
+})
+
+
+/**
+ * @summary End the current client session
+ */
+export const LogoutResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary List the RBAC permission matrix
+ */
+export const ListRolesAndPermissionsResponse = zod.object({
+  "roles": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "description": zod.string(),
+  "userCount": zod.number().int(),
+  "permissionKeys": zod.array(zod.string())
+})),
+  "permissions": zod.array(zod.object({
+  "id": zod.number().int(),
+  "key": zod.string(),
+  "label": zod.string(),
+  "description": zod.string(),
+  "category": zod.string()
+}))
+})
+
+
+/**
+ * @summary Update the permissions assigned to a role
+ */
+export const UpdateRolePermissionsParams = zod.object({
+  "role": zod.enum(['ADMIN_GERAL', 'ARTICULADOR', 'COORDENADOR', 'LIDERANCA'])
+})
+
+export const UpdateRolePermissionsBody = zod.object({
+  "permissionKeys": zod.array(zod.string())
+})
+
+export const UpdateRolePermissionsResponse = zod.unknown()
+
+
+/**
+ * @summary List system users
+ */
+export const ListAuthUsersResponseItem = zod.object({
+  "id": zod.number().int(),
+  "email": zod.string(),
+  "fullName": zod.string(),
+  "role": zod.string(),
+  "regionId": zod.number().int().nullable(),
+  "cityId": zod.number().int().nullable(),
+  "leadershipId": zod.number().int().nullable(),
+  "isActive": zod.boolean(),
+  "canCreateLeaderUsers": zod.boolean(),
+  "permissions": zod.array(zod.string())
+}).and(zod.object({
+  "regionName": zod.string().nullish(),
+  "cityName": zod.string().nullish(),
+  "lastLoginAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date().optional()
+}))
+export const ListAuthUsersResponse = zod.array(ListAuthUsersResponseItem)
+
+
+/**
+ * @summary Create a system user
+ */
+export const createAuthUserBodyOnePasswordMin = 8;
+
+export const createAuthUserBodyTwoPasswordMin = 8;
+
+
+
+export const CreateAuthUserBody = zod.object({
+  "fullName": zod.string(),
+  "role": zod.string(),
+  "regionId": zod.number().int().nullish(),
+  "cityId": zod.number().int().nullish(),
+  "leadershipId": zod.number().int().nullish(),
+  "isActive": zod.boolean().optional(),
+  "canCreateLeaderUsers": zod.boolean().optional(),
+  "password": zod.string().min(createAuthUserBodyOnePasswordMin)
+}).and(zod.object({
+  "email": zod.string().email(),
+  "password": zod.string().min(createAuthUserBodyTwoPasswordMin)
+}))
+
+export const CreateAuthUserResponse = zod.void()
+
+
+/**
+ * @summary Update a system user
+ */
+
+
+
+export const UpdateAuthUserParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const updateAuthUserBodyPasswordMin = 8;
+
+
+
+export const UpdateAuthUserBody = zod.object({
+  "fullName": zod.string(),
+  "role": zod.string(),
+  "regionId": zod.number().int().nullish(),
+  "cityId": zod.number().int().nullish(),
+  "leadershipId": zod.number().int().nullish(),
+  "isActive": zod.boolean().optional(),
+  "canCreateLeaderUsers": zod.boolean().optional(),
+  "password": zod.string().min(updateAuthUserBodyPasswordMin).optional()
+})
+
+export const UpdateAuthUserResponse = zod.unknown()
+
+
+/**
  * @summary Get the campaign macro overview
  */
 export const GetCampaignOverviewResponse = zod.object({
