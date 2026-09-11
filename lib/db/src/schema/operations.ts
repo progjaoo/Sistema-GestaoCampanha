@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   index,
   integer,
   pgTable,
@@ -70,14 +71,32 @@ export const campaignEventAcknowledgementsTable = pgTable(
   (table) => [primaryKey({ columns: [table.eventId, table.userId] })],
 );
 
+export const campaignCalendarSharesTable = pgTable(
+  "campaign_calendar_shares",
+  {
+    id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    token: text("token").notNull(),
+    label: text("label").notNull().default("Agenda semanal"),
+    weekStart: date("week_start", { mode: "string" }).notNull(),
+    active: boolean("active").notNull().default(true),
+    createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("campaign_calendar_shares_token_unique").on(table.token),
+    index("campaign_calendar_shares_week_idx").on(table.weekStart),
+  ],
+);
+
 export const insertTaskSchema = z.object({
   title: z.string().min(2),
   description: z.string().nullable().optional(),
   status: z.enum(["todo", "in_progress", "blocked", "done"]).optional(),
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   dueAt: z.string().datetime().nullable().optional(),
-  cityId: z.number().int().positive().nullable().optional(),
-  leadershipId: z.number().int().positive().nullable().optional(),
+  cityId: z.number().int().positive(),
+  leadershipId: z.number().int().positive(),
+  leadershipPhone: z.string().nullable().optional(),
   assigneeUserId: z.number().int().positive().nullable().optional(),
 });
 export type InsertTask = z.infer<typeof insertTaskSchema>;
@@ -94,3 +113,4 @@ export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 
 export type CampaignTask = typeof campaignTasksTable.$inferSelect;
 export type CampaignCalendarEvent = typeof campaignCalendarEventsTable.$inferSelect;
+export type CampaignCalendarShare = typeof campaignCalendarSharesTable.$inferSelect;

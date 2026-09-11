@@ -1,8 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
 import {
   authUsersTable,
   campaignCalendarEventsTable,
+  campaignCalendarSharesTable,
   campaignEventAcknowledgementsTable,
   campaignTasksTable,
   citiesTable,
@@ -17,6 +19,7 @@ import { hasPermission, leadershipScopeCondition, cityScopeCondition } from "../
 import { requireAnyPermission, requirePermission } from "../middlewares/auth";
 
 const router: IRouter = Router();
+export const publicOperationsRouter: IRouter = Router();
 
 function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -65,6 +68,7 @@ async function taskById(id: number, principal: NonNullable<Express.Request["auth
       regionName: regionsTable.name,
       leadershipId: campaignTasksTable.leadershipId,
       leadershipName: leadershipsTable.name,
+      leadershipContact: leadershipsTable.leadershipContact,
       assigneeUserId: campaignTasksTable.assigneeUserId,
       assigneeName: authUsersTable.fullName,
       createdByUserId: campaignTasksTable.createdByUserId,
@@ -106,6 +110,7 @@ router.get(
         regionName: regionsTable.name,
         leadershipId: campaignTasksTable.leadershipId,
         leadershipName: leadershipsTable.name,
+        leadershipContact: leadershipsTable.leadershipContact,
         assigneeUserId: campaignTasksTable.assigneeUserId,
         assigneeName: authUsersTable.fullName,
         createdAt: campaignTasksTable.createdAt,
@@ -132,38 +137,47 @@ router.post(
     const title = stringValue(req.body.title, true);
     const cityId = numberValue(req.body.cityId);
     const leadershipId = numberValue(req.body.leadershipId);
-    if (!title || (cityId === undefined && leadershipId === undefined)) {
-      res.status(400).json({ error: "Título e cidade ou liderança são obrigatórios." });
+    if (!title || !cityId || !leadershipId) {
+      res.status(400).json({ error: "Título, cidade e liderança responsável são obrigatórios." });
       return;
     }
-    let resolvedCityId = cityId ?? null;
-    if (leadershipId) {
-      const [leadership] = await db.select({ cityId: leadershipsTable.cityId }).from(leadershipsTable).where(eq(leadershipsTable.id, leadershipId));
-      if (!leadership) {
-        res.status(400).json({ error: "Liderança não encontrada." });
-        return;
-      }
-      resolvedCityId = leadership.cityId;
+    const [leadership] = await db.select({
+      cityId: leadershipsTable.cityId,
+      leadershipContact: leadershipsTable.leadershipContact,
+    }).from(leadershipsTable).where(eq(leadershipsTable.id, leadershipId));
+    if (!leadership || leadership.cityId !== cityId) {
+      res.status(400).json({ error: "A liderança selecionada não pertence à cidade informada." });
+      return;
     }
-    const [allowedCity] = resolvedCityId
-      ? await db.select({ id: citiesTable.id }).from(citiesTable).where(and(eq(citiesTable.id, resolvedCityId), cityScopeCondition(req.auth!)))
-      : [];
+    const [allowedCity] = await db.select({ id: citiesTable.id }).from(citiesTable).where(and(eq(citiesTable.id, cityId), cityScopeCondition(req.auth!)));
     if (!allowedCity) {
       res.status(403).json({ error: "O território está fora do seu escopo." });
       return;
     }
     const dueAt = req.body.dueAt === null ? null : dateValue(req.body.dueAt);
-    const [created] = await db.insert(campaignTasksTable).values({
-      title,
-      description: stringValue(req.body.description),
-      status: ["todo", "in_progress", "blocked", "done"].includes(String(req.body.status)) ? String(req.body.status) : "todo",
-      priority: ["low", "normal", "high", "urgent"].includes(String(req.body.priority)) ? String(req.body.priority) : "normal",
-      dueAt,
-      cityId: resolvedCityId,
-      leadershipId: leadershipId ?? null,
-      assigneeUserId: numberValue(req.body.assigneeUserId) ?? null,
-      createdByUserId: req.auth!.user.id,
-    }).returning({ id: campaignTasksTable.id });
+    const leadershipPhone = stringValue(req.body.leadershipPhone);
+    if (leadershipPhone && !normalizeWhatsAppPhone(leadershipPhone)) {
+      res.status(400).json({ error: "Informe um telefone válido com DDD para a liderança." });
+      return;
+    }
+    const [created] = await db.transaction(async (tx) => {
+      if (leadershipPhone && !leadership.leadershipContact) {
+        await tx.update(leadershipsTable)
+          .set({ leadershipContact: leadershipPhone, updatedAt: new Date() })
+          .where(eq(leadershipsTable.id, leadershipId));
+      }
+      return tx.insert(campaignTasksTable).values({
+        title,
+        description: stringValue(req.body.description),
+        status: ["todo", "in_progress", "blocked", "done"].includes(String(req.body.status)) ? String(req.body.status) : "todo",
+        priority: ["low", "normal", "high", "urgent"].includes(String(req.body.priority)) ? String(req.body.priority) : "normal",
+        dueAt,
+        cityId,
+        leadershipId,
+        assigneeUserId: numberValue(req.body.assigneeUserId) ?? null,
+        createdByUserId: req.auth!.user.id,
+      }).returning({ id: campaignTasksTable.id });
+    });
     res.status(201).json(await taskById(created.id, req.auth!));
   },
 );
@@ -236,14 +250,14 @@ router.get(
       })
       .from(authUsersTable)
       .where(and(eq(authUsersTable.isActive, true), sql`${authUsersTable.phone} is not null`, task.cityId ? eq(authUsersTable.cityId, task.cityId) : sql`false`));
-    const campaignContacts = task.cityId
+  const campaignContacts = task.cityId && task.leadershipId
       ? await db.select({
           id: leadershipsTable.id,
           name: leadershipsTable.name,
           phone: leadershipsTable.leadershipContact,
           role: sql<string>`'LIDERANCA'`,
           email: sql<string>`null`,
-        }).from(leadershipsTable).where(and(eq(leadershipsTable.cityId, task.cityId), sql`${leadershipsTable.leadershipContact} is not null`))
+        }).from(leadershipsTable).where(and(eq(leadershipsTable.id, task.leadershipId), sql`${leadershipsTable.leadershipContact} is not null`))
       : [];
     res.json(
       [...rows, ...campaignContacts].flatMap((recipient) => {
@@ -279,6 +293,29 @@ router.get(
       .where(cityScopeCondition(req.auth!))
       .orderBy(asc(campaignCalendarEventsTable.startsAt));
     res.json(events);
+  },
+);
+
+router.post(
+  "/calendar/shares",
+  requirePermission("calendar:manage"),
+  async (req, res): Promise<void> => {
+    if (!record(req.body) || typeof req.body.weekStart !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(req.body.weekStart)) {
+      res.status(400).json({ error: "A semana da agenda é obrigatória." });
+      return;
+    }
+    const token = randomBytes(24).toString("base64url");
+    const [share] = await db.insert(campaignCalendarSharesTable).values({
+      token,
+      weekStart: req.body.weekStart,
+      label: stringValue(req.body.label) ?? "Agenda semanal",
+      createdByUserId: req.auth!.user.id,
+    }).returning({
+      token: campaignCalendarSharesTable.token,
+      weekStart: campaignCalendarSharesTable.weekStart,
+      label: campaignCalendarSharesTable.label,
+    });
+    res.status(201).json(share);
   },
 );
 
@@ -417,3 +454,40 @@ router.post(
 );
 
 export default router;
+
+publicOperationsRouter.get("/calendar/shared/:token", async (req, res): Promise<void> => {
+  const token = typeof req.params.token === "string" ? req.params.token : "";
+  const [share] = await db.select({
+    token: campaignCalendarSharesTable.token,
+    weekStart: campaignCalendarSharesTable.weekStart,
+    label: campaignCalendarSharesTable.label,
+  }).from(campaignCalendarSharesTable).where(and(
+    eq(campaignCalendarSharesTable.token, token),
+    eq(campaignCalendarSharesTable.active, true),
+  ));
+  if (!share) {
+    res.status(404).json({ error: "Link de agenda inválido ou desativado." });
+    return;
+  }
+  const weekStart = new Date(`${share.weekStart}T00:00:00-03:00`);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const events = await db.select({
+    id: campaignCalendarEventsTable.id,
+    title: campaignCalendarEventsTable.title,
+    description: campaignCalendarEventsTable.description,
+    location: campaignCalendarEventsTable.location,
+    startsAt: campaignCalendarEventsTable.startsAt,
+    endsAt: campaignCalendarEventsTable.endsAt,
+    cityName: citiesTable.name,
+    regionName: regionsTable.name,
+  }).from(campaignCalendarEventsTable)
+    .innerJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId))
+    .innerJoin(regionsTable, eq(regionsTable.id, citiesTable.regionId))
+    .where(and(
+      sql`${campaignCalendarEventsTable.startsAt} >= ${weekStart}`,
+      sql`${campaignCalendarEventsTable.startsAt} < ${weekEnd}`,
+    ))
+    .orderBy(asc(campaignCalendarEventsTable.startsAt));
+  res.json({ share, events });
+});

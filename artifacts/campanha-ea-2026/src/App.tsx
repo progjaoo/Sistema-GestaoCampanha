@@ -15,6 +15,7 @@ import AccessControlPage from '@/pages/access-control';
 import TasksPage from '@/pages/tasks';
 import AgendaPage from '@/pages/agenda';
 import ProfilePage from '@/pages/profile';
+import SharedAgendaPage from '@/pages/shared-agenda';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import {
   Route,
@@ -53,6 +54,9 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
 }
 
 function App() {
+  if (window.location.pathname.includes('/agenda/compartilhada/')) {
+    return <SharedAgendaPage />;
+  }
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
