@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Archive, BarChart3, CalendarDays, ChevronRight, ClipboardCheck, FileSpreadsheet, Handshake, KanbanSquare, Map, Menu, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
+import { Archive, BarChart3, CalendarDays, ChevronRight, ClipboardCheck, FileSpreadsheet, Handshake, KanbanSquare, Map, Menu, MoreHorizontal, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/lib/auth';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -20,6 +20,7 @@ const navItems = [
 export function OpsShell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       const stored = localStorage.getItem('ea2026-sidebar-collapsed');
@@ -36,6 +37,15 @@ export function OpsShell({ children }: { children: ReactNode }) {
   const { user, can, logout } = useAuth();
   const active = (href: string) => href === '/' ? location === '/' : location.startsWith(href);
   const visibleNavItems = navItems.filter((item) => !item.permission || can(item.permission));
+  const mobilePrimaryHrefs = ['/', '/cobertura', '/kanban', '/agenda'];
+  const mobilePrimaryItems = [
+    ...mobilePrimaryHrefs
+      .map((href) => visibleNavItems.find((item) => item.href === href))
+      .filter((item): item is (typeof visibleNavItems)[number] => Boolean(item)),
+    ...visibleNavItems.filter((item) => !mobilePrimaryHrefs.includes(item.href)),
+  ].slice(0, 4);
+  const mobileMoreItems = visibleNavItems.filter((item) => !mobilePrimaryItems.some((primaryItem) => primaryItem.href === item.href));
+  const mobileMoreActive = mobileMoreItems.some((item) => active(item.href));
 
   const compactSidebar = isCollapsed && !open;
 
@@ -92,22 +102,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
           </nav>
         </div>
 
-        <div className="shrink-0 p-4 border-t border-sidebar-border">
-          {!compactSidebar ? (
-            <div className="rounded-xl border border-sidebar-border bg-sidebar-accent/45 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="mono-label text-sidebar-foreground/50">Ambiente</span>
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              </div>
-              <p className="text-xs font-semibold text-sidebar-foreground/80">Base territorial ativa</p>
-              <p className="mt-1 text-[11px] text-sidebar-foreground/45">Atualização contínua</p>
-            </div>
-          ) : (
-            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-sidebar-border bg-sidebar-accent/45" title="Ambiente ativo: Atualização contínua">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            </div>
-          )}
-
+        <div className="shrink-0 border-t border-sidebar-border p-4">
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="mt-4 hidden w-full items-center justify-center rounded-lg border border-sidebar-border py-2 text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground md:flex"
@@ -147,8 +142,62 @@ export function OpsShell({ children }: { children: ReactNode }) {
             </button>
           </div>
         </header>
-        <main className="flex-1 w-full mx-auto max-w-[1440px] px-4 py-7 sm:px-7 lg:px-10 lg:py-10">{children}</main>
+        <main className="flex-1 w-full mx-auto max-w-[1440px] px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-7 sm:px-7 lg:px-10 lg:py-10">{children}</main>
       </div>
+      {mobileMoreOpen && (
+        <button
+          className="fixed inset-0 z-30 bg-sidebar/25 md:hidden"
+          onClick={() => setMobileMoreOpen(false)}
+          aria-label="Fechar mais opções"
+          data-testid="button-close-mobile-more"
+        />
+      )}
+      {mobileMoreOpen && (
+        <div className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-40 rounded-2xl border border-border bg-card p-2 shadow-2xl md:hidden" role="menu" data-testid="mobile-more-menu">
+          <p className="px-3 pb-2 pt-1 text-[10px] font-extrabold uppercase tracking-[.12em] text-muted-foreground">Mais opções</p>
+          <div className="grid grid-cols-2 gap-1">
+            {mobileMoreItems.map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                onClick={() => setMobileMoreOpen(false)}
+                className={`flex min-h-12 items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${active(href) ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'}`}
+                role="menuitem"
+                data-testid={`link-mobile-more-${label.toLowerCase().replaceAll(' ', '-')}`}
+              >
+                <Icon size={17} />
+                <span className="truncate">{label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+      <nav className="fixed inset-x-0 bottom-0 z-20 flex items-stretch border-t border-border bg-card/95 px-2 pb-[env(safe-area-inset-bottom)] pt-2 backdrop-blur-md md:hidden" data-testid="mobile-tabbar">
+        {mobilePrimaryItems.map(({ href, label, icon: Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            onClick={() => setMobileMoreOpen(false)}
+            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[10px] font-bold ${active(href) ? 'text-primary' : 'text-muted-foreground'}`}
+            data-testid={`link-mobile-${label.toLowerCase().replaceAll(' ', '-')}`}
+          >
+            <Icon size={18} strokeWidth={active(href) ? 2.5 : 1.8} />
+            <span className="max-w-full truncate px-1">{label}</span>
+          </Link>
+        ))}
+        {mobileMoreItems.length > 0 && (
+          <button
+            onClick={() => setMobileMoreOpen((current) => !current)}
+            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl py-2 text-[10px] font-bold ${mobileMoreActive || mobileMoreOpen ? 'text-primary' : 'text-muted-foreground'}`}
+            aria-expanded={mobileMoreOpen}
+            aria-label="Mais opções"
+            data-testid="button-mobile-more"
+          >
+            <MoreHorizontal size={18} strokeWidth={mobileMoreActive || mobileMoreOpen ? 2.5 : 1.8} />
+            <span>Mais</span>
+          </button>
+        )}
+      </nav>
     </div>
   );
 }
