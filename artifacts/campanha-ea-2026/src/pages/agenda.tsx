@@ -4,7 +4,8 @@ import { useListCities } from "@workspace/api-client-react";
 import { authFetch, useAuth } from "@/lib/auth";
 import { ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
 
-type EventRow = { id: number; googleHtmlLink: string | null; title: string; description: string | null; location: string | null; startsAt: string; endsAt: string; cityId: number; cityName: string; regionName: string; status: string };
+type EventRow = { id: number; source: "google"; googleHtmlLink: string | null; title: string; description: string | null; location: string | null; startsAt: string; endsAt: string; cityId: number; cityName: string; regionName: string; status: string; syncStatus: string; lastSyncedAt: string | null; lastSyncError: string | null };
+type SyncStatus = { provider: string; status: string; lastAttemptedAt: string | null; lastSyncedAt: string | null; lastError: string | null };
 type CalendarView = "list" | "week";
 async function read<T>(response: Response): Promise<T> { const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(typeof body.error === "string" ? body.error : "Não foi possível concluir a operação."); return body as T; }
 
@@ -25,12 +26,15 @@ export default function AgendaPage() {
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
   const [shareLink, setShareLink] = useState("");
   const [shareMessage, setShareMessage] = useState("");
+  const [syncStates, setSyncStates] = useState<SyncStatus[]>([]);
 
   async function load() {
     setLoading(true); setError("");
     try {
       const rows = await read<EventRow[]>(await authFetch("/api/calendar/events"));
       setEvents(rows);
+      const sync = await read<{ states: SyncStatus[] }>(await authFetch("/api/calendar/sync-status"));
+      setSyncStates(sync.states);
       const pending = rows.find((event) => event.status === "pending" && !localStorage.getItem(`ea-event-seen-${event.id}`));
       if (pending) setNotice(pending);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar a agenda."); }
@@ -61,6 +65,7 @@ export default function AgendaPage() {
   return <OpsShell>
     <PageHeading eyebrow="Agenda / território" title="Agenda da campanha" description="Consulte a lista completa ou organize os compromissos em uma visão semanal." action={<div className="flex flex-wrap gap-2">{can("calendar:manage") && <><button onClick={() => void sync()} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-3 text-xs font-extrabold"><RefreshCw size={14} /> Sincronizar</button><button onClick={() => setShowCreate(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground">Novo evento</button></>}</div>} />
     {error && <p className="mb-4 rounded-xl bg-destructive/5 p-3 text-xs font-bold text-destructive">{error}</p>}
+    {can("calendar:view") && <section className="mb-5 rounded-2xl border border-border bg-card p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-extrabold">Saúde da sincronização</p><p className="mt-1 text-xs text-muted-foreground">Google Calendar alimenta a Agenda e continua como fonte única dos eventos.</p></div><div className="flex flex-wrap gap-2">{syncStates.map((state) => <span key={state.provider} className="rounded-full border border-border px-3 py-1.5 text-[11px] font-bold">Google: {state.status === "ok" ? "OK" : state.status === "error" ? "erro" : "aguardando"}{state.lastSyncedAt ? ` · ${new Date(state.lastSyncedAt).toLocaleString("pt-BR")}` : ""}</span>)}</div></div>{syncStates.some((state) => state.lastError) && <p className="mt-3 rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive">{syncStates.find((state) => state.lastError)?.lastError}</p>}</section>}
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3">
       <div className="flex items-center gap-2"><button onClick={() => setView("list")} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-extrabold ${view === "list" ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted"}`}><LayoutList size={14} /> Lista</button><button onClick={() => setView("week")} className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-extrabold ${view === "week" ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted"}`}><CalendarDays size={14} /> Calendário semanal</button></div>
       {view === "week" && <div className="flex items-center gap-2"><button onClick={() => setWeekStart((date) => { const next = new Date(date); next.setDate(next.getDate() - 7); return next; })} className="rounded-lg border border-border p-2 hover:bg-muted" aria-label="Semana anterior"><ChevronLeft size={15} /></button><span className="min-w-[190px] text-center text-xs font-extrabold capitalize">{weekLabel(weekStart)}</span><button onClick={() => setWeekStart((date) => { const next = new Date(date); next.setDate(next.getDate() + 7); return next; })} className="rounded-lg border border-border p-2 hover:bg-muted" aria-label="Próxima semana"><ChevronRight size={15} /></button></div>}

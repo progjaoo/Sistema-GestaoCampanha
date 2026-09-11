@@ -6,6 +6,7 @@ import {
   campaignBoardMembersTable,
   campaignBoardsTable,
   campaignCalendarEventsTable,
+  campaignCalendarSyncStateTable,
   campaignCalendarSharesTable,
   campaignEventAcknowledgementsTable,
   campaignTasksTable,
@@ -47,6 +48,30 @@ function dateValue(value: unknown): Date | null {
   if (typeof value !== "string") return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function clearSyncError() {
+  return { syncStatus: "synced", lastSyncedAt: new Date(), lastSyncError: null };
+}
+
+async function recordSyncState(provider: string, status: string, error?: string | null): Promise<void> {
+  const now = new Date();
+  await db.insert(campaignCalendarSyncStateTable).values({
+    provider,
+    status,
+    lastAttemptedAt: now,
+    lastSyncedAt: status === "ok" ? now : null,
+    lastError: error ?? null,
+  }).onConflictDoUpdate({
+    target: campaignCalendarSyncStateTable.provider,
+    set: {
+      status,
+      lastAttemptedAt: now,
+      lastSyncedAt: status === "ok" ? now : undefined,
+      lastError: error ?? null,
+      updatedAt: now,
+    },
+  });
 }
 
 function normalizeWhatsAppPhone(value: unknown): string | null {
@@ -813,6 +838,7 @@ router.get(
     const events = await db
       .select({
         id: campaignCalendarEventsTable.id,
+        source: campaignCalendarEventsTable.source,
         googleEventId: campaignCalendarEventsTable.googleEventId,
         googleHtmlLink: campaignCalendarEventsTable.googleHtmlLink,
         title: campaignCalendarEventsTable.title,
@@ -824,13 +850,32 @@ router.get(
         cityName: citiesTable.name,
         regionName: regionsTable.name,
         status: campaignCalendarEventsTable.status,
+        syncStatus: campaignCalendarEventsTable.syncStatus,
+        lastSyncedAt: campaignCalendarEventsTable.lastSyncedAt,
+        lastSyncError: campaignCalendarEventsTable.lastSyncError,
       })
       .from(campaignCalendarEventsTable)
       .innerJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId))
       .innerJoin(regionsTable, eq(regionsTable.id, citiesTable.regionId))
-      .where(cityScopeCondition(req.auth!))
+      .where(and(eq(campaignCalendarEventsTable.source, "google"), cityScopeCondition(req.auth!)))
       .orderBy(asc(campaignCalendarEventsTable.startsAt));
     res.json(events);
+  },
+);
+
+router.get(
+  "/calendar/sync-status",
+  requirePermission("calendar:view"),
+  async (_req, res): Promise<void> => {
+    const states = await db.select().from(campaignCalendarSyncStateTable)
+      .where(eq(campaignCalendarSyncStateTable.provider, "google"));
+    res.json({
+      states,
+      sourceRules: [
+        { source: "google", truth: "Google Calendar é a fonte dos eventos criados na Agenda.", flow: "Google Calendar → Agenda; Agenda → Google Calendar ao criar." },
+        { source: "agenda", truth: "A Agenda é a visão operacional filtrada por cidade/território.", flow: "Não é uma terceira fonte de sincronização." },
+      ],
+    });
   },
 );
 
@@ -895,15 +940,16 @@ router.post(
         location: stringValue(req.body.location),
         start: { dateTime: startsAt.toISOString(), timeZone: "America/Sao_Paulo" },
         end: { dateTime: endsAt.toISOString(), timeZone: "America/Sao_Paulo" },
-        extendedProperties: { private: { eaCityId: String(cityId) } },
+        extendedProperties: { private: { eaCityId: String(cityId), eaSource: "google" } },
       }),
     });
     if (!googleResponse.ok) {
-      res.status(502).json({ error: "O Google Calendar não aceitou o evento.", details: await googleResponse.text() });
+      res.status(502).json({ error: "O Google Calendar não aceitou o evento." });
       return;
     }
     const googleEvent = await googleResponse.json() as { id: string; htmlLink?: string };
     const [created] = await db.insert(campaignCalendarEventsTable).values({
+      source: "google",
       googleCalendarId: "primary",
       googleEventId: googleEvent.id,
       googleHtmlLink: googleEvent.htmlLink ?? null,
@@ -914,6 +960,9 @@ router.post(
       endsAt,
       cityId,
       status: "pending",
+      syncStatus: "synced",
+      lastSyncedAt: new Date(),
+      sourceUpdatedAt: new Date(),
       createdByUserId: req.auth!.user.id,
     }).returning();
     res.status(201).json(created);
@@ -935,44 +984,86 @@ router.post(
       orderBy: "startTime",
       maxResults: "250",
     });
-    const response = await googleCalendarRequest(`/calendar/v3/calendars/primary/events?${query.toString()}`);
-    if (!response.ok) {
-      res.status(502).json({ error: "Não foi possível sincronizar o Google Calendar.", details: await response.text() });
-      return;
-    }
-    const payload = await response.json() as { items?: Array<Record<string, unknown>> };
     const visibleCities = await db
       .select({ id: citiesTable.id })
       .from(citiesTable)
       .where(cityScopeCondition(req.auth!));
     const visibleCityIds = new Set(visibleCities.map((city) => city.id));
-    let imported = 0;
-    for (const event of payload.items ?? []) {
-      if (event.status === "cancelled" || typeof event.id !== "string") continue;
-      const privateProps = record(event.extendedProperties) && record(event.extendedProperties.private) ? event.extendedProperties.private : {};
-      const cityId = numberValue(privateProps.eaCityId);
-      const start = record(event.start) && typeof event.start.dateTime === "string" ? dateValue(event.start.dateTime) : null;
-      const end = record(event.end) && typeof event.end.dateTime === "string" ? dateValue(event.end.dateTime) : null;
-      if (!cityId || !visibleCityIds.has(cityId) || !start || !end || typeof event.summary !== "string") continue;
-      await db.insert(campaignCalendarEventsTable).values({
-        googleCalendarId: "primary",
-        googleEventId: event.id,
-        googleHtmlLink: typeof event.htmlLink === "string" ? event.htmlLink : null,
-        title: event.summary,
-        description: typeof event.description === "string" ? event.description : null,
-        location: typeof event.location === "string" ? event.location : null,
-        startsAt: start,
-        endsAt: end,
-        cityId,
-        status: "pending",
-        createdByUserId: req.auth!.user.id,
-      }).onConflictDoUpdate({
-        target: [campaignCalendarEventsTable.googleCalendarId, campaignCalendarEventsTable.googleEventId],
-        set: { title: event.summary, startsAt: start, endsAt: end, googleHtmlLink: typeof event.htmlLink === "string" ? event.htmlLink : null },
-      });
-      imported++;
+    let googleImported = 0;
+    let googleCancelled = 0;
+    const errors: string[] = [];
+
+    try {
+      const response = await googleCalendarRequest(`/calendar/v3/calendars/primary/events?${query.toString()}`);
+      if (!response.ok) throw new Error(`Google Calendar indisponível (${response.status}).`);
+      const payload = await response.json() as { items?: Array<Record<string, unknown>> };
+      for (const event of payload.items ?? []) {
+        if (typeof event.id !== "string") continue;
+        const privateProps = record(event.extendedProperties) && record(event.extendedProperties.private) ? event.extendedProperties.private : {};
+        const cityId = numberValue(privateProps.eaCityId);
+        const start = record(event.start) && typeof event.start.dateTime === "string" ? dateValue(event.start.dateTime) : null;
+        const end = record(event.end) && typeof event.end.dateTime === "string" ? dateValue(event.end.dateTime) : null;
+        if (!cityId || !visibleCityIds.has(cityId)) continue;
+        if (event.status === "cancelled") {
+          await db.update(campaignCalendarEventsTable).set({
+            status: "cancelled",
+            ...clearSyncError(),
+            updatedAt: new Date(),
+          }).where(and(
+            eq(campaignCalendarEventsTable.googleCalendarId, "primary"),
+            eq(campaignCalendarEventsTable.googleEventId, event.id),
+          ));
+          googleCancelled += 1;
+          continue;
+        }
+        if (!start || !end || typeof event.summary !== "string") continue;
+        await db.insert(campaignCalendarEventsTable).values({
+          source: "google",
+          googleCalendarId: "primary",
+          googleEventId: event.id,
+          googleHtmlLink: typeof event.htmlLink === "string" ? event.htmlLink : null,
+          title: event.summary,
+          description: typeof event.description === "string" ? event.description : null,
+          location: typeof event.location === "string" ? event.location : null,
+          startsAt: start,
+          endsAt: end,
+          cityId,
+          status: "pending",
+          ...clearSyncError(),
+          sourceUpdatedAt: dateValue(event.updated),
+          createdByUserId: req.auth!.user.id,
+        }).onConflictDoUpdate({
+          target: [campaignCalendarEventsTable.googleCalendarId, campaignCalendarEventsTable.googleEventId],
+          set: {
+            source: "google",
+            title: event.summary,
+            description: typeof event.description === "string" ? event.description : null,
+            location: typeof event.location === "string" ? event.location : null,
+            startsAt: start,
+            endsAt: end,
+            status: "pending",
+            googleHtmlLink: typeof event.htmlLink === "string" ? event.htmlLink : null,
+            ...clearSyncError(),
+            sourceUpdatedAt: dateValue(event.updated),
+            updatedAt: new Date(),
+          },
+        });
+        googleImported += 1;
+      }
+      await recordSyncState("google", "ok");
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : "Falha ao sincronizar Google Calendar.";
+      errors.push(message);
+      await recordSyncState("google", "error", message);
     }
-    res.json({ imported });
+
+    res.json({
+      imported: googleImported,
+      googleImported,
+      googleCancelled,
+      errors,
+      syncedAt: new Date().toISOString(),
+    });
   },
 );
 
@@ -981,7 +1072,7 @@ router.post(
   requireAnyPermission(["calendar:approve", "calendar:view"]),
   async (req, res): Promise<void> => {
     const id = Number(req.params.id);
-    const [event] = await db.select({ id: campaignCalendarEventsTable.id }).from(campaignCalendarEventsTable).innerJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId)).where(and(eq(campaignCalendarEventsTable.id, id), cityScopeCondition(req.auth!)));
+    const [event] = await db.select({ id: campaignCalendarEventsTable.id }).from(campaignCalendarEventsTable).innerJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId)).where(and(eq(campaignCalendarEventsTable.id, id), eq(campaignCalendarEventsTable.source, "google"), cityScopeCondition(req.auth!)));
     if (!event) {
       res.status(404).json({ error: "Evento não encontrado." });
       return;
@@ -1023,6 +1114,7 @@ publicOperationsRouter.get("/calendar/shared/:token", async (req, res): Promise<
     .innerJoin(citiesTable, eq(citiesTable.id, campaignCalendarEventsTable.cityId))
     .innerJoin(regionsTable, eq(regionsTable.id, citiesTable.regionId))
     .where(and(
+      eq(campaignCalendarEventsTable.source, "google"),
       sql`${campaignCalendarEventsTable.startsAt} >= ${weekStart}`,
       sql`${campaignCalendarEventsTable.startsAt} < ${weekEnd}`,
     ))

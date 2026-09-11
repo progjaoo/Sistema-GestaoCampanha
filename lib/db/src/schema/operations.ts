@@ -124,9 +124,12 @@ export const campaignCalendarEventsTable = pgTable(
   "campaign_calendar_events",
   {
     id: integer("id").generatedAlwaysAsIdentity().primaryKey(),
+    source: text("source").notNull().default("google"),
     googleCalendarId: text("google_calendar_id").notNull().default("primary"),
     googleEventId: text("google_event_id").notNull(),
     googleHtmlLink: text("google_html_link"),
+    calendlyEventId: text("calendly_event_id"),
+    calendlyEventUri: text("calendly_event_uri"),
     title: text("title").notNull(),
     description: text("description"),
     location: text("location"),
@@ -134,15 +137,33 @@ export const campaignCalendarEventsTable = pgTable(
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     cityId: integer("city_id").notNull().references(() => citiesTable.id),
     status: text("status").notNull().default("pending"),
+    syncStatus: text("sync_status").notNull().default("synced"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    lastSyncError: text("last_sync_error"),
+    sourceUpdatedAt: timestamp("source_updated_at", { withTimezone: true }),
     createdByUserId: integer("created_by_user_id").notNull().references(() => authUsersTable.id),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("campaign_calendar_events_google_unique").on(table.googleCalendarId, table.googleEventId),
+    uniqueIndex("campaign_calendar_events_calendly_unique").on(table.calendlyEventId),
     index("campaign_calendar_events_city_idx").on(table.cityId),
     index("campaign_calendar_events_start_idx").on(table.startsAt),
+    index("campaign_calendar_events_source_idx").on(table.source),
   ],
+);
+
+export const campaignCalendarSyncStateTable = pgTable(
+  "campaign_calendar_sync_state",
+  {
+    provider: text("provider").primaryKey(),
+    status: text("status").notNull().default("never"),
+    lastAttemptedAt: timestamp("last_attempted_at", { withTimezone: true }),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
 );
 
 export const campaignEventAcknowledgementsTable = pgTable(
