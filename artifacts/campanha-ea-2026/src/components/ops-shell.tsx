@@ -204,13 +204,13 @@ export function OpsShell({ children }: { children: ReactNode }) {
 
 export function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
   return (
-    <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div>
+    <div className="mb-7 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+      <div className="min-w-0">
         <p className="mono-label mb-2 text-primary">{eyebrow}</p>
         <h1 className="break-words text-[clamp(1.75rem,4vw,2.65rem)] font-extrabold leading-[1.05] tracking-[-.045em]">{title}</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
       </div>
-      {action && <div className="w-full sm:w-auto">{action}</div>}
+      {action && <div className="w-full lg:w-auto">{action}</div>}
     </div>
   );
 }

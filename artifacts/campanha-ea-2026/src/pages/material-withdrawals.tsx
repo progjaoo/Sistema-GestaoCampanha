@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Archive, Check, ChevronDown, Edit3, MapPin, Package, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { authFetch, useAuth } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
+import { confirmWithToast } from "@/lib/confirm-toast";
 
 type Material = { id: number; name: string; description: string | null; unit: string; isActive: boolean };
 type City = { id: number; name: string; regionName: string };
@@ -94,9 +95,16 @@ export default function MaterialWithdrawalsPage() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível atualizar o status."); }
   }
   async function deleteRow(row: Withdrawal) {
-    if (!window.confirm("Excluir esta retirada?")) return;
-    try { await read(await authFetch(`/api/material-withdrawals/${row.id}`, { method: "DELETE" })); setRows((current) => current.filter((item) => item.id !== row.id)); setNotice("Retirada excluída."); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível excluir a retirada."); }
+    confirmWithToast({
+      title: "Excluir retirada?",
+      description: `A retirada de ${row.cityName} será removida permanentemente.`,
+      actionLabel: "Excluir",
+      variant: "destructive",
+      onConfirm: async () => {
+        try { await read(await authFetch(`/api/material-withdrawals/${row.id}`, { method: "DELETE" })); setRows((current) => current.filter((item) => item.id !== row.id)); setNotice("Retirada excluída."); }
+        catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível excluir a retirada."); }
+      },
+    });
   }
   async function saveCatalog(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setSaving(true);

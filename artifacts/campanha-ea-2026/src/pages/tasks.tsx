@@ -22,6 +22,7 @@ import type { ReactNode } from "react";
 import { useListCities, useListLeaderships } from "@workspace/api-client-react";
 import { authFetch, useAuth } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
+import { confirmWithToast } from "@/lib/confirm-toast";
 
 type Board = {
   id: number;
@@ -363,8 +364,18 @@ export default function TasksPage() {
     await updateStatus(task, status);
   }
 
-  async function deleteTask(task: Pick<Task, "id" | "boardId">) {
-    if (!can("tasks:delete") || !window.confirm("Excluir esta tarefa permanentemente?")) return;
+  function deleteTask(task: Pick<Task, "id" | "boardId">) {
+    if (!can("tasks:delete")) return;
+    confirmWithToast({
+      title: "Excluir tarefa?",
+      description: "Esta tarefa e todos os seus registros serão removidos permanentemente.",
+      actionLabel: "Excluir",
+      variant: "destructive",
+      onConfirm: () => void executeDeleteTask(task),
+    });
+  }
+
+  async function executeDeleteTask(task: Pick<Task, "id" | "boardId">) {
     try {
       await json(await authFetch(`/api/tasks/${task.id}`, { method: "DELETE" }));
       setSelectedTaskId((current) => current === task.id ? null : current);
@@ -379,26 +390,32 @@ export default function TasksPage() {
   async function toggleBoardArchived(board: Board) {
     if (!can("boards:archive")) return;
     const action = board.archived ? "restaurar" : "arquivar";
-    if (!window.confirm(`Deseja ${action} o quadro “${board.title}”?`)) return;
-    try {
-      const updated = await json<Board>(await authFetch(`/api/boards/${board.id}/archive`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ archived: !board.archived }),
-      }));
-      if (!updated.archived) {
-        setShowArchived(false);
-        await loadBoards(false, updated.id);
-        setSelectedBoardId(updated.id);
-      } else {
-        await loadBoards(false, null);
-        setSelectedBoardId(null);
-        setTasks([]);
-        setBoardDetail(null);
-      }
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Não foi possível alterar o estado do quadro.");
-    }
+    confirmWithToast({
+      title: `${action === "arquivar" ? "Arquivar" : "Restaurar"} quadro?`,
+      description: `O quadro “${board.title}” será ${action}do.`,
+      actionLabel: action === "arquivar" ? "Arquivar" : "Restaurar",
+      onConfirm: async () => {
+        try {
+          const updated = await json<Board>(await authFetch(`/api/boards/${board.id}/archive`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archived: !board.archived }),
+          }));
+          if (!updated.archived) {
+            setShowArchived(false);
+            await loadBoards(false, updated.id);
+            setSelectedBoardId(updated.id);
+          } else {
+            await loadBoards(false, null);
+            setSelectedBoardId(null);
+            setTasks([]);
+            setBoardDetail(null);
+          }
+        } catch (reason) {
+          setError(reason instanceof Error ? reason.message : "Não foi possível alterar o estado do quadro.");
+        }
+      },
+    });
   }
 
   if (loadingBoards) {
