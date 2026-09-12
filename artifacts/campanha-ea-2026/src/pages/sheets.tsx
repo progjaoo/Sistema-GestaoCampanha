@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { authFetch, useAuth } from "@/lib/auth";
-import { ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
+import { ErrorState, LoadingRows, OpsShell, PageHeading } from "@/components/ops-shell";
 
 type SheetData = {
   title: string;
