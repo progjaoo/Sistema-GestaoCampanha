@@ -34,7 +34,7 @@ router.get("/sheets/campaign", requirePermission("sheets:view"), async (req, res
   }
 
   const valuesResponse = await googleSheetsRequest(
-    `/v4/spreadsheets/${encodePathPart(CAMPAIGN_SPREADSHEET_ID)}/values/${encodePathPart(`'${tab.title}'!A1:Z3000`)}`,
+    `/v4/spreadsheets/${encodePathPart(CAMPAIGN_SPREADSHEET_ID)}/values/${encodePathPart(`'${tab.title}'`)}`,
   );
   if (!valuesResponse.ok) {
     res.status(502).json({ error: "A planilha foi localizada, mas não foi possível ler a aba selecionada." });
@@ -42,10 +42,11 @@ router.get("/sheets/campaign", requirePermission("sheets:view"), async (req, res
   }
   const valuesBody = await valuesResponse.json() as { values?: unknown[][] };
   const values = Array.isArray(valuesBody.values) ? valuesBody.values : [];
-  const headers = (values[0] ?? []).map((value) => String(value ?? ""));
-  const rows = values.slice(1).map((row, index) => ({
-    sourceRow: index + 2,
-    values: headers.map((_, columnIndex) => String(row[columnIndex] ?? "")),
+  const columnCount = values.reduce((largest, row) => Math.max(largest, Array.isArray(row) ? row.length : 0), 0);
+  const headers = Array.from({ length: columnCount }, (_, columnIndex) => String(values[0]?.[columnIndex] ?? ""));
+  const rows = values.map((row, index) => ({
+    sourceRow: index + 1,
+    values: Array.from({ length: columnCount }, (_, columnIndex) => String(row?.[columnIndex] ?? "")),
   }));
 
   const sourceRows = rows.map((row) => row.sourceRow);

@@ -49,6 +49,7 @@ export default function AgendaPage() {
   const [syncStates, setSyncStates] = useState<SyncStatus[]>([]);
   const [showWhatsAppShare, setShowWhatsAppShare] = useState(false);
   const [automaticNotification, setAutomaticNotification] = useState<AutomaticNotification | null>(null);
+  const [pendingNotification, setPendingNotification] = useState<AutomaticNotification | null>(null);
   const [deletingEventId, setDeletingEventId] = useState<number | null>(null);
 
   async function load() {
@@ -63,9 +64,8 @@ export default function AgendaPage() {
       setSyncStates(sync.states);
       const pending = rows.find((event) => event.status === "pending" && !localStorage.getItem(`ea-event-seen-${event.id}`));
       const pendingNotification = notifications.find((item) => item.messages.some((message) => message.status === "prepared"));
-      if (pendingNotification) {
-        setAutomaticNotification(pendingNotification);
-      } else if (pending) {
+      setPendingNotification(pendingNotification ?? null);
+      if (pending) {
         setNotice(pending);
       }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar a agenda."); }
@@ -104,7 +104,10 @@ export default function AgendaPage() {
       const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
       setShareLink(`${window.location.origin}${base}agenda/compartilhada/${share.token}`);
       setShareMessage("Link criado. Copie e envie para o Edson.");
-      if (share.notification) setAutomaticNotification(share.notification);
+       if (share.notification) {
+         setPendingNotification(null);
+         setAutomaticNotification(share.notification);
+       }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível criar o link da agenda."); }
   }
   async function copyShareLink() {
@@ -120,6 +123,7 @@ export default function AgendaPage() {
   return <OpsShell>
      <PageHeading eyebrow="Agenda / território" title="Agenda da campanha" description="Consulte a lista completa ou organize os compromissos em uma visão semanal." action={<div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">{can("calendar:manage") && <><button onClick={() => void sync()} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-border px-3 py-3 text-xs font-extrabold sm:flex-none"><RefreshCw size={14} /> Sincronizar</button><button onClick={() => setShowCreate(true)} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground sm:flex-none">Novo evento</button></>}</div>} />
     {error && <p className="mb-4 rounded-xl bg-destructive/5 p-3 text-xs font-bold text-destructive">{error}</p>}
+     {pendingNotification && can("calendar:manage") && <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="flex items-center gap-2 text-sm font-extrabold text-emerald-950"><MessageCircle size={16} className="shrink-0 text-emerald-700" /> Há mensagens de agenda preparadas</p><p className="mt-1 text-xs leading-5 text-emerald-800">Revise cada mensagem e confirme o envio diretamente no WhatsApp{pendingNotification.eventTitle ? ` para o evento “${pendingNotification.eventTitle}”` : "."}</p></div><div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button onClick={() => { setAutomaticNotification(pendingNotification); setPendingNotification(null); }} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-xs font-extrabold text-white hover:bg-emerald-700"><MessageCircle size={14} /> Continuar preparação</button><button onClick={() => setPendingNotification(null)} className="inline-flex h-10 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-xs font-extrabold text-emerald-800 hover:bg-emerald-100">Agora não</button></div></section>}
     {can("calendar:view") && <section className="mb-5 rounded-2xl border border-border bg-card p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-extrabold">Saúde da sincronização</p><p className="mt-1 text-xs text-muted-foreground">Google Calendar alimenta a Agenda e continua como fonte única dos eventos.</p></div><div className="flex flex-wrap gap-2">{syncStates.map((state) => <span key={state.provider} className="rounded-full border border-border px-3 py-1.5 text-[11px] font-bold">Google: {state.status === "ok" ? "OK" : state.status === "error" ? "erro" : "aguardando"}{state.lastSyncedAt ? ` · ${new Date(state.lastSyncedAt).toLocaleString("pt-BR")}` : ""}</span>)}</div></div>{syncStates.some((state) => state.lastError) && <p className="mt-3 rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive">{syncStates.find((state) => state.lastError)?.lastError}</p>}</section>}
      <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
        <div className="grid w-full grid-cols-2 gap-1 rounded-lg bg-muted p-1 sm:flex sm:w-auto sm:items-center sm:gap-2 sm:bg-transparent sm:p-0"><button onClick={() => setView("list")} className={`inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-[11px] font-extrabold sm:px-3 sm:text-xs ${view === "list" ? "bg-card text-primary shadow-sm sm:bg-secondary sm:shadow-none" : "text-muted-foreground hover:bg-card sm:hover:bg-muted"}`}><LayoutList size={14} /> Lista</button><button onClick={() => setView("week")} className={`inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-[11px] font-extrabold sm:px-3 sm:text-xs ${view === "week" ? "bg-card text-primary shadow-sm sm:bg-secondary sm:shadow-none" : "text-muted-foreground hover:bg-card sm:hover:bg-muted"}`}><CalendarDays size={14} /> Calendário semanal</button></div>
@@ -151,7 +155,7 @@ export default function AgendaPage() {
        </div>
      </article>) : <div className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Nenhum evento da agenda foi encontrado para o seu território.</div>}</div>}
      {can("calendar:manage") && <section className="mt-5 rounded-2xl border border-[#b8d6e8] bg-[#eaf2f8] p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="flex items-center gap-2 text-sm font-extrabold text-primary"><Link2 size={16} /> Compartilhar semana com Edson Albertassi</p><p className="mt-1 text-xs text-slate-600">Crie um link somente para a semana selecionada na visão de calendário.</p></div><div className="grid gap-2 sm:flex sm:flex-wrap"><button onClick={() => void createShareLink()} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-xs font-extrabold text-primary-foreground sm:w-auto">Gerar link da semana</button><button onClick={() => setShowWhatsAppShare(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 py-2.5 text-xs font-extrabold text-emerald-800 sm:w-auto"><MessageCircle size={14} /> Enviar agenda da semana</button></div></div>{shareLink && <div className="mt-4 flex flex-col gap-2 sm:flex-row"><input readOnly value={shareLink} className="h-10 min-w-0 flex-1 rounded-lg border border-[#b8d6e8] bg-white px-3 text-xs text-slate-600" /><button onClick={() => void copyShareLink()} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-primary bg-white px-4 text-xs font-extrabold text-primary"><Copy size={14} /> Copiar link</button></div>}{shareMessage && <p className="mt-2 text-xs font-bold text-primary">{shareMessage}</p>}</section>}
-      {showCreate && <CreateEventDialog cities={cities.data ?? []} onClose={() => setShowCreate(false)} onCreated={(payload) => { setEvents((current) => [...current, payload].sort((a, b) => a.startsAt.localeCompare(b.startsAt))); setShowCreate(false); setNotice(null); if (payload.notification) setAutomaticNotification(payload.notification); }} />}
+      {showCreate && <CreateEventDialog cities={cities.data ?? []} onClose={() => setShowCreate(false)} onCreated={(payload) => { setEvents((current) => [...current, payload].sort((a, b) => a.startsAt.localeCompare(b.startsAt))); setShowCreate(false); setNotice(null); if (payload.notification) { setPendingNotification(null); setAutomaticNotification(payload.notification); } }} />}
       {showWhatsAppShare && <ShareAgendaDialog weekStart={weekStart} weekLabel={weekLabel(weekStart)} onClose={() => setShowWhatsAppShare(false)} onAutomaticNotification={setAutomaticNotification} />}
       {automaticNotification && <AutomaticNotificationDialog notification={automaticNotification} onClose={() => setAutomaticNotification(null)} />}
     {notice && <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/35 p-4"><section className="w-full max-w-md rounded-2xl bg-card p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="mono-label text-primary">Aviso da sua cidade</p><h2 className="mt-1 text-xl font-extrabold">{notice.title}</h2></div><button onClick={() => void acknowledge(notice)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted" aria-label="Fechar aviso"><X size={18} /></button></div><p className="mt-4 text-sm leading-6 text-muted-foreground">Haverá uma agenda de campanha em <strong className="text-foreground">{notice.cityName}</strong> em {new Date(notice.startsAt).toLocaleString("pt-BR")}{notice.location ? `, no local ${notice.location}` : ""}.</p>{notice.description && <p className="mt-3 rounded-xl bg-muted p-3 text-xs leading-5">{notice.description}</p>}<button onClick={() => void acknowledge(notice)} className="mt-6 h-11 w-full rounded-lg bg-primary text-sm font-extrabold text-primary-foreground">Entendi</button></section></div>}
@@ -265,15 +269,15 @@ function AutomaticNotificationDialog({ notification, onClose }: { notification: 
     return null;
   }
 
-  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/40 p-4" role="dialog" aria-modal="true" aria-labelledby="automatic-notification-title">
-    <section className="w-full max-w-xl rounded-2xl bg-card p-6 shadow-2xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+  return <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-primary/40 p-3 sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby="automatic-notification-title">
+    <section className="my-auto max-h-[calc(100dvh-1.5rem)] min-w-0 w-full max-w-xl overflow-y-auto rounded-2xl bg-card p-4 shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:p-6">
+      <div className="flex min-w-0 items-start justify-between gap-4">
+        <div className="min-w-0">
           <p className="mono-label text-primary">Agenda / preparação automática</p>
-          <h2 id="automatic-notification-title" className="mt-1 text-xl font-extrabold">Preparar aviso no WhatsApp</h2>
+          <h2 id="automatic-notification-title" className="mt-1 break-words text-xl font-extrabold">Preparar aviso no WhatsApp</h2>
           <p className="mt-1 text-xs text-muted-foreground">{notification.eventTitle ? `Evento: ${notification.eventTitle}` : notification.label ?? "Agenda semanal"} · {notification.messages.length} destinatários</p>
         </div>
-        <button onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-muted" aria-label="Fechar preparação"><X size={18} /></button>
+        <button onClick={onClose} className="shrink-0 rounded-lg p-2 text-muted-foreground hover:bg-muted" aria-label="Fechar preparação"><X size={18} /></button>
       </div>
       <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
         <p className="text-xs leading-5 text-emerald-950">As mensagens foram preparadas individualmente. Abra cada conversa, revise o texto e confirme o envio dentro do WhatsApp.</p>
@@ -287,7 +291,7 @@ function AutomaticNotificationDialog({ notification, onClose }: { notification: 
       </div>
       <div className="mt-5 rounded-xl border border-border bg-background/50 p-4">
         <p className="mono-label text-primary">Mensagem para {current.recipientName}</p>
-        <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap font-sans text-xs leading-5 text-foreground">{current.message}</pre>
+        <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap font-sans text-xs leading-5 text-foreground [overflow-wrap:anywhere]">{current.message}</pre>
       </div>
       <div className="mt-5 grid gap-2 sm:grid-cols-3">
         <a href={current.whatsappUrl} target="_blank" rel="noreferrer" onClick={() => markOpened(current)} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-extrabold text-white"><MessageCircle size={14} /> Abrir WhatsApp</a>

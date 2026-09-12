@@ -67,46 +67,37 @@ export default function SheetsPage() {
       action={<div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{data?.spreadsheetUrl && <a href={data.spreadsheetUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-extrabold hover:bg-muted sm:flex-none" data-testid="link-open-google-sheets"><ExternalLink size={14} /> Abrir no Google Sheets</a>}<button onClick={() => void load()} className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-extrabold text-primary-foreground sm:flex-none" data-testid="button-refresh-sheet"><RefreshCw size={14} /> Atualizar</button></div>}
     />
     {error && <p className="mb-4 rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive">{error}</p>}
-    <section className="mb-5 rounded-2xl border border-border bg-card p-2 sm:p-4 overflow-x-auto scrollbar-thin">
+    <section className="mb-5 overflow-x-auto rounded-xl border border-border bg-card p-2 scrollbar-thin sm:p-3">
       <div className="flex items-center gap-2 w-max">
-        <FileSpreadsheet size={18} className="text-primary hidden sm:block mx-2" />
+        <FileSpreadsheet size={18} className="mx-2 hidden text-primary sm:block" />
         {data?.tabs.map((item, index) => <button key={item} onClick={() => { setTab(item); void load(item); }} className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-extrabold transition-colors ${item === data.selectedTab ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-secondary"}`} data-testid={`button-sheet-tab-${index}`}>{item}</button>)}
       </div>
     </section>
 
-    <section className="overflow-hidden rounded-xl border border-border bg-card shadow-sm flex flex-col h-[65vh] md:h-[70vh]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-3 sm:p-4 bg-muted/30">
-        <div><p className="text-sm font-extrabold">Aba: {data?.selectedTab ?? "—"}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{data?.totalRows ?? 0} linhas carregadas para conferência.</p></div>
-        <StatusPill tone="success">{data?.matches.length ?? 0} linhas relacionadas ao sistema</StatusPill>
+    <section className="flex h-[calc(100dvh-17rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm md:h-[calc(100dvh-15rem)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 p-3 sm:p-4">
+        <div><p className="text-sm font-extrabold">Aba: {data?.selectedTab ?? "—"}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{data?.totalRows ?? 0} linhas carregadas · somente leitura</p></div>
       </div>
       <div className="flex-1 overflow-auto bg-background scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
-        <table className="min-w-max border-collapse text-left text-xs table-fixed">
-          <thead className="sticky top-0 z-10 bg-[#f8f9fa] dark:bg-[#1a1d1e] shadow-[0_1px_0_hsl(var(--border))]">
+        <table className="min-w-max border-collapse text-left text-xs">
+          <thead className="sticky top-0 z-10 bg-[#f8f9fa] shadow-[0_1px_0_hsl(var(--border))] dark:bg-[#1a1d1e]">
             <tr>
-              <th className="sticky left-0 z-20 w-12 bg-[#f8f9fa] dark:bg-[#1a1d1e] border-r border-border border-b text-center align-middle font-normal text-muted-foreground"></th>
+              <th className="sticky left-0 z-20 w-12 border-b border-r border-border bg-[#f8f9fa] text-center align-middle font-normal text-muted-foreground dark:bg-[#1a1d1e]"></th>
               {data?.headers.map((_, index) => (
-                <th key={`col-${index}`} className="border-r border-border border-b px-2 py-1 text-center align-middle font-normal text-muted-foreground select-none min-w-[120px]">
+                <th key={`col-${index}`} className="min-w-[128px] border-b border-r border-border px-2 py-1 text-center align-middle font-normal text-muted-foreground select-none">
                   {getColumnLetter(index)}
-                </th>
-              ))}
-            </tr>
-            <tr>
-              <th className="sticky left-0 z-20 w-12 bg-[#f8f9fa] dark:bg-[#1a1d1e] border-r border-border border-b"></th>
-              {data?.headers.map((header, index) => (
-                <th key={`${header}-${index}`} className="border-r border-border border-b px-3 py-2 font-bold text-foreground bg-muted/20 truncate">
-                  {header || `Coluna ${index + 1}`}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {data?.rows.map((row) => (
-              <tr key={row.sourceRow} className={`group hover:bg-muted/30 ${data.matches.includes(row.sourceRow) ? "bg-emerald-50/40 dark:bg-emerald-950/20" : ""}`}>
-                <td className="sticky left-0 z-10 w-12 bg-[#f8f9fa] dark:bg-[#1a1d1e] border-r border-border border-b text-center font-mono text-muted-foreground select-none">
+              <tr key={row.sourceRow} className="group hover:bg-muted/30">
+                <td className="sticky left-0 z-10 w-12 border-b border-r border-border bg-[#f8f9fa] text-center font-mono text-muted-foreground select-none dark:bg-[#1a1d1e]">
                   {row.sourceRow}
                 </td>
                 {row.values.map((value, index) => (
-                  <td key={`${row.sourceRow}-${index}`} className="border-r border-border border-b px-3 py-2 truncate max-w-[300px] group-hover:text-foreground text-foreground/80">
+                  <td key={`${row.sourceRow}-${index}`} className="max-w-[360px] border-b border-r border-border px-3 py-2 align-top text-foreground/80 [overflow-wrap:anywhere] group-hover:text-foreground">
                     {value || ""}
                   </td>
                 ))}
