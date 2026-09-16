@@ -7,3 +7,4 @@
 - [Public agenda scope](public-agenda-scope.md) — weekly public links snapshot territorial scope and non-admin users may prepare only links they created.
 - [Populated-table identity migrations](populated-table-identity-migrations.md) — add identity columns and supporting uniqueness before asking Drizzle to add dependent foreign keys.
 - [Campaign frontend build environment](campaign-build-env.md) — direct Vite builds require both PORT and BASE_PATH from the artifact manifest.
+- [PWA install constraints](pwa-install-constraints.md) — shared links can open an install guide, but browsers require a user gesture and iOS requires manual Safari steps.

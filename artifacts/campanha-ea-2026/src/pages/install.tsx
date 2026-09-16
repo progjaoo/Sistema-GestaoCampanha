@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, CheckCircle2, Download, Info, Share, Smartphone } from "lucide-react";
-import { getPwaInstallUrl, usePwaInstall } from "@/lib/pwa";
+import { usePwaInstall } from "@/lib/pwa";
 
 function appBaseUrl() {
   const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
