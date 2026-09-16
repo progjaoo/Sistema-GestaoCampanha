@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Download, Info, Link2, Share, Smartphone, X } from "lucide-react";
-import { usePwaInstall } from "@/lib/pwa";
+import { getPwaInstallUrl, usePwaInstall } from "@/lib/pwa";
 import { toast } from "@/hooks/use-toast";
 
 export function PwaInstallCard() {
@@ -15,8 +15,7 @@ export function PwaInstallCard() {
   }
 
   async function handleShare() {
-    const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
-    const url = new URL(base, window.location.origin).toString();
+    const url = getPwaInstallUrl();
     try {
       if (navigator.share) {
         await navigator.share({
@@ -59,7 +58,7 @@ export function PwaInstallCard() {
               <p className="mono-label text-primary-foreground/60">Acesso rápido</p>
               <h2 className="mt-1 text-lg font-extrabold tracking-tight">Instale o aplicativo da campanha</h2>
               <p className="mt-1 max-w-xl text-sm leading-5 text-primary-foreground/70">
-                Abra o painel pela tela inicial do dispositivo, sem precisar procurar o navegador.
+                Compartilhe um link que abre diretamente as instruções de instalação.
               </p>
             </div>
           </div>
@@ -71,7 +70,7 @@ export function PwaInstallCard() {
               data-testid="button-share-pwa-link"
             >
               <Link2 size={15} />
-              Compartilhar link
+              Compartilhar link de instalação
             </button>
             <button
               type="button"

@@ -18,6 +18,7 @@ import ProfilePage from '@/pages/profile';
 import SharedAgendaPage from '@/pages/shared-agenda';
 import SheetsPage from '@/pages/sheets';
 import MaterialWithdrawalsPage from '@/pages/material-withdrawals';
+import InstallPage from '@/pages/install';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import {
   Route,
@@ -60,6 +61,9 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
 function App() {
   if (window.location.pathname.includes('/agenda/compartilhada/')) {
     return <SharedAgendaPage />;
+  }
+  if (/\/instalar\/?$/.test(window.location.pathname)) {
+    return <InstallPage />;
   }
   return (
     <QueryClientProvider client={queryClient}>

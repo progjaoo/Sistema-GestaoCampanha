@@ -72,6 +72,11 @@ export function usePwaInstall() {
   };
 }
 
+export function getPwaInstallUrl() {
+  const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+  return new URL(`${base}instalar`, window.location.origin).toString();
+}
+
 export function registerPwaServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
