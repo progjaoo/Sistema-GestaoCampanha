@@ -65,7 +65,6 @@ export default function SheetsPage() {
 
   function selectTab(item: string) {
     setTab(item);
-    setTabQuery(item);
     void load(item);
   }
 
