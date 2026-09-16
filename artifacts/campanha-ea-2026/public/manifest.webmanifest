@@ -1,0 +1,35 @@
+{
+  "id": "./",
+  "name": "Gestão da Campanha EA 2026",
+  "short_name": "Campanha EA",
+  "description": "Painel de gestão territorial e operacional da campanha.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#075985",
+  "theme_color": "#075985",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "campaign-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "campaign-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "campaign-icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

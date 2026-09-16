@@ -5,6 +5,7 @@ import { type CampaignOverview, type City, type Region, useGetCampaignOverview, 
 import { useAuth } from '@/lib/auth';
 import { useOfflineSnapshot } from '@/lib/connectivity';
 import { ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from '@/components/ops-shell';
+import { PwaInstallCard } from '@/components/pwa-install-card';
 
 type OverviewSnapshot = { overview: CampaignOverview | null; regions: Region[] | null; cities: City[] | null };
 
@@ -29,6 +30,7 @@ export default function OverviewPage() {
   const max = Math.max(...regionItems.map((item) => item.leadershipCount), 1);
   return <OpsShell>
     <PageHeading eyebrow="EA 2026 / panorama" title="Visão geral" description="Cobertura territorial, liderança local e sinais que pedem atenção." lastUpdatedAt={snapshot.savedAt} stale={Boolean(cached && !overview.data)} action={<Link href="/liderancas" className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5" data-testid="link-explore-leaderships">Explorar lideranças <ArrowUpRight size={15} /></Link>} />
+     <PwaInstallCard />
     <section className="mb-8 rounded-2xl border border-border bg-card p-4 shadow-[0_8px_30px_hsl(193_30%_15%_/.03)] sm:p-5" data-testid="quick-actions">
       <div className="mb-4 flex items-center justify-between gap-3"><div><p className="mono-label text-primary">Ações rápidas</p><h2 className="mt-1 text-sm font-extrabold">Comece pela próxima ação da operação</h2></div><Plus size={18} className="text-muted-foreground" /></div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
