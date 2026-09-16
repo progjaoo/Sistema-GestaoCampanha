@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 
 import App from './App';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { registerPwaServiceWorker } from '@/lib/pwa';
 
 import './index.css';
 
@@ -15,3 +16,5 @@ createRoot(document.getElementById('root')!, {
     <App />
   </ErrorBoundary>,
 );
+
+registerPwaServiceWorker();
