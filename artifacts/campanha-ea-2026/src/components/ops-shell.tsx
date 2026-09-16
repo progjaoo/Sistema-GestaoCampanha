@@ -144,7 +144,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
       {open && <button className="fixed inset-0 z-40 bg-sidebar/45 backdrop-blur-sm md:hidden" onClick={() => setOpen(false)} aria-label="Fechar menu" data-testid="button-menu-overlay" />}
 
       <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isCollapsed ? 'md:pl-[72px]' : 'md:pl-[268px]'}`}>
-        <header className="sticky top-0 z-30 flex h-[72px] shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm sm:px-7 lg:px-10">
+        <header className="app-header sticky top-0 z-30 flex shrink-0 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur-sm sm:px-7 lg:px-10">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={() => setOpen(true)} className="shrink-0 rounded-lg p-2 hover:bg-muted md:hidden" aria-label="Abrir menu" data-testid="button-open-menu"><Menu size={21} /></button>
             <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex truncate">

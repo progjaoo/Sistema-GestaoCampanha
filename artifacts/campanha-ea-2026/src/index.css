@@ -25,6 +25,11 @@
   box-shadow: 0 0 0 2px hsl(var(--ring) / 0.25);
 }
 
+.app-header {
+  min-height: calc(72px + env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
 .sheet-scroll-area {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
