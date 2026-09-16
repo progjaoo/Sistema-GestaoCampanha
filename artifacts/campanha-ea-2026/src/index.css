@@ -25,6 +25,12 @@
   box-shadow: 0 0 0 2px hsl(var(--ring) / 0.25);
 }
 
+.sheet-scroll-area {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-x pan-y;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

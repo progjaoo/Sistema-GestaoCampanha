@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink, FileSpreadsheet, RefreshCw, Search, X } from "lucide-react";
+import { ExternalLink, FileSpreadsheet, MoveHorizontal, RefreshCw, Search, X } from "lucide-react";
 import { authFetch, useAuth } from "@/lib/auth";
 import { ErrorState, LoadingRows, OpsShell, PageHeading } from "@/components/ops-shell";
 import { HorizontalScrollHint } from "@/components/mobile-form";
@@ -190,17 +190,24 @@ export default function SheetsPage() {
       </p>
     </section>
 
-    <section className="flex h-[calc(100dvh-17rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm md:h-[calc(100dvh-15rem)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 p-3 sm:p-4">
-        <div><p className="text-sm font-extrabold">Aba: {data?.selectedTab ?? "—"}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{data?.totalRows ?? 0} linhas carregadas · somente leitura</p></div>
+    <section className="flex h-[calc(100dvh-16rem)] min-h-[360px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:h-[calc(100dvh-17rem)] md:h-[calc(100dvh-15rem)]">
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border bg-muted/30 p-3 sm:items-center sm:gap-3 sm:p-4">
+        <div>
+          <p className="text-sm font-extrabold">Aba: {data?.selectedTab ?? "—"}</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">{data?.totalRows ?? 0} linhas carregadas · somente leitura</p>
+          <p className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground sm:hidden">
+            <MoveHorizontal size={13} className="shrink-0 text-primary" aria-hidden="true" />
+            Arraste para os lados e role para baixo para consultar a grade.
+          </p>
+        </div>
       </div>
-      <HorizontalScrollHint wrapperClassName="min-h-0 flex-1" className="h-full bg-background scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+      <HorizontalScrollHint wrapperClassName="min-h-0 flex-1" label="Arraste para os lados" className="sheet-scroll-area h-full w-full bg-background scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
         <table className="min-w-max border-collapse text-left text-xs">
           <thead className="sticky top-0 z-10 bg-[#f8f9fa] shadow-[0_1px_0_hsl(var(--border))] dark:bg-[#1a1d1e]">
             <tr>
               <th className="sticky left-0 z-20 w-12 border-b border-r border-border bg-[#f8f9fa] text-center align-middle font-normal text-muted-foreground dark:bg-[#1a1d1e]"></th>
               {data?.headers.map((_, index) => (
-                <th key={`col-${index}`} className="min-w-[128px] border-b border-r border-border px-2 py-1 text-center align-middle font-normal text-muted-foreground select-none">
+                <th key={`col-${index}`} className="min-w-[104px] border-b border-r border-border px-2 py-1 text-center align-middle font-normal text-muted-foreground select-none sm:min-w-[128px]">
                   {getColumnLetter(index)}
                 </th>
               ))}
@@ -213,7 +220,7 @@ export default function SheetsPage() {
                   {row.sourceRow}
                 </td>
                 {row.values.map((value, index) => (
-                  <td key={`${row.sourceRow}-${index}`} className="max-w-[360px] border-b border-r border-border px-3 py-2 align-top text-foreground/80 [overflow-wrap:anywhere] group-hover:text-foreground">
+                  <td key={`${row.sourceRow}-${index}`} className="max-w-[240px] border-b border-r border-border px-2 py-2 align-top text-foreground/80 [overflow-wrap:anywhere] group-hover:text-foreground sm:max-w-[360px] sm:px-3">
                     {value || ""}
                   </td>
                 ))}
