@@ -7,6 +7,7 @@
  */
 
 export interface AuthUserUpdate {
+  email?: string;
   fullName: string;
   role: string;
   /** @nullable */
@@ -19,4 +20,6 @@ export interface AuthUserUpdate {
   canCreateLeaderUsers?: boolean;
   /** @minLength 8 */
   password?: string;
+  /** @nullable */
+  phone?: string | null;
 }

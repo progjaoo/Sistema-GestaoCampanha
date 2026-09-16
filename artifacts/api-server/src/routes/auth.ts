@@ -43,6 +43,7 @@ type CreateUserInput = {
 };
 
 type UpdateUserInput = {
+  email?: string;
   fullName?: string;
   role?: string;
   regionId?: number | null;
@@ -94,12 +95,14 @@ function parseCreateUserBody(value: unknown): CreateUserInput | null {
 
 function parseUpdateUserBody(value: unknown): UpdateUserInput | null {
   if (!isRecord(value)) return null;
+  if (value.email !== undefined && !isEmail(value.email)) return null;
   if (value.fullName !== undefined && (typeof value.fullName !== "string" || value.fullName.trim().length < 2)) return null;
   if (value.role !== undefined && typeof value.role !== "string") return null;
   if (value.password !== undefined && (typeof value.password !== "string" || value.password.length < 8)) return null;
   if (value.isActive !== undefined && typeof value.isActive !== "boolean") return null;
   if (value.canCreateLeaderUsers !== undefined && typeof value.canCreateLeaderUsers !== "boolean") return null;
   return {
+    email: typeof value.email === "string" ? value.email.trim().toLowerCase() : undefined,
     fullName: typeof value.fullName === "string" ? value.fullName : undefined,
     role: typeof value.role === "string" ? value.role : undefined,
     regionId: optionalNumber(value.regionId),
@@ -411,8 +414,46 @@ router.patch(
       res.status(400).json({ error: "Dados inválidos." });
       return;
     }
+    if (!req.auth) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    if (id === req.auth.user.id && parsed.isActive === false) {
+      res.status(400).json({ error: "Você não pode bloquear o próprio acesso." });
+      return;
+    }
+    if (parsed.email) {
+      const [existing] = await db
+        .select({ id: authUsersTable.id })
+        .from(authUsersTable)
+        .where(eq(authUsersTable.email, parsed.email));
+      if (existing && existing.id !== id) {
+        res.status(409).json({ error: "Já existe um usuário com este e-mail." });
+        return;
+      }
+    }
+    let relationshipUpdates: { cityId?: number | null; regionId?: number | null; leadershipId?: number | null } = {};
+    if (parsed.role === "LIDERANCA") {
+      if (!parsed.leadershipId) {
+        res.status(400).json({ error: "Uma liderança deve ser vinculada ao usuário." });
+        return;
+      }
+      const [leadership] = await db
+        .select({ cityId: leadershipsTable.cityId, regionId: citiesTable.regionId })
+        .from(leadershipsTable)
+        .innerJoin(citiesTable, eq(citiesTable.id, leadershipsTable.cityId))
+        .where(eq(leadershipsTable.id, parsed.leadershipId));
+      if (!leadership) {
+        res.status(400).json({ error: "A liderança selecionada não existe." });
+        return;
+      }
+      relationshipUpdates = { cityId: leadership.cityId, regionId: leadership.regionId, leadershipId: parsed.leadershipId };
+    } else if (parsed.role && parsed.role !== "LIDERANCA") {
+      relationshipUpdates = { leadershipId: null };
+    }
     const updates = {
       ...parsed,
+      ...relationshipUpdates,
       ...(parsed.password ? { passwordHash: await hashPassword(parsed.password) } : {}),
       updatedAt: new Date(),
     } as Record<string, unknown>;
@@ -428,6 +469,39 @@ router.patch(
     }
     const permissions = await getPermissionsForRole(updated.role);
     res.json({ user: publicUser(updated, permissions) });
+  },
+);
+
+router.delete(
+  "/auth/users/:id",
+  requirePermission("users:manage"),
+  async (req, res): Promise<void> => {
+    const id = Number(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+    if (!Number.isInteger(id) || !req.auth) {
+      res.status(400).json({ error: "Usuário inválido." });
+      return;
+    }
+    if (id === req.auth.user.id) {
+      res.status(400).json({ error: "Você não pode excluir o próprio acesso." });
+      return;
+    }
+    try {
+      const [deleted] = await db
+        .delete(authUsersTable)
+        .where(eq(authUsersTable.id, id))
+        .returning({ id: authUsersTable.id });
+      if (!deleted) {
+        res.status(404).json({ error: "Usuário não encontrado." });
+        return;
+      }
+      res.json({ success: true, id: deleted.id });
+    } catch (reason) {
+      if (isRecord(reason) && reason.code === "23503") {
+        res.status(409).json({ error: "Este usuário possui registros vinculados e não pode ser excluído. Bloqueie o acesso em vez de apagar o cadastro." });
+        return;
+      }
+      throw reason;
+    }
   },
 );
 

@@ -167,6 +167,15 @@ paths:
       responses:
         "200":
           description: User updated
+    delete:
+      operationId: deleteAuthUser
+      tags: [access-control]
+      summary: Delete a system user
+      parameters:
+        - $ref: "#/components/parameters/AuthUserId"
+      responses:
+        "200":
+          description: User deleted
   /campaign/overview:
     get:
       operationId: getCampaignOverview
@@ -772,6 +781,9 @@ components:
     AuthUserUpdate:
       type: object
       properties:
+        email:
+          type: string
+          format: email
         fullName:
           type: string
         role:
@@ -789,6 +801,8 @@ components:
         password:
           type: string
           minLength: 8
+        phone:
+          type: ["string", "null"]
       required: [fullName, role]
     AuthUserAdmin:
       allOf:

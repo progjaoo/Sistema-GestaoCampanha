@@ -26,6 +26,7 @@ import { confirmWithToast } from "@/lib/confirm-toast";
 import { StickyFormActions } from "@/components/mobile-form";
 import { formatPhone } from "@/lib/form-utils";
 import { useOfflineSnapshot } from "@/lib/connectivity";
+import { toast } from "@/hooks/use-toast";
 
 type Board = {
   id: number;
@@ -360,6 +361,7 @@ export default function TasksPage() {
         body: JSON.stringify({ status }),
       }));
       await loadTasks(selectedBoardId);
+      toast({ title: "Tarefa atualizada", description: `“${task.title}” mudou para ${statusLabels[status] ?? status}.` });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível atualizar a tarefa.");
     }
@@ -391,6 +393,7 @@ export default function TasksPage() {
       setTasks((current) => current.filter((item) => item.id !== task.id));
       await loadTasks(selectedBoardId);
       await loadBoardDetail(task.boardId);
+      toast({ title: "Tarefa excluída", description: "A tarefa e seus registros foram removidos." });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível excluir a tarefa.");
     }
@@ -420,6 +423,7 @@ export default function TasksPage() {
             setTasks([]);
             setBoardDetail(null);
           }
+          toast({ title: updated.archived ? "Quadro arquivado" : "Quadro restaurado", description: `“${board.title}” foi atualizado.` });
         } catch (reason) {
           setError(reason instanceof Error ? reason.message : "Não foi possível alterar o estado do quadro.");
         }
@@ -553,8 +557,8 @@ export default function TasksPage() {
       </section>
     </div>
 
-    {showBoardForm && <BoardFormDialog board={editingBoard} cities={cities.data ?? []} onClose={() => setShowBoardForm(false)} onSaved={async (saved) => { setShowBoardForm(false); await loadBoards(false, saved.id); setShowArchived(false); setSelectedBoardId(saved.id); }} />}
-    {showTaskForm && selectedBoard && <CreateTaskDialog board={selectedBoard} cities={cities.data ?? []} onClose={() => setShowTaskForm(false)} onCreated={async (task) => { setShowTaskForm(false); setSelectedTaskId(task.id); await loadTasks(selectedBoard.id); await loadBoardDetail(selectedBoard.id); }} />}
+    {showBoardForm && <BoardFormDialog board={editingBoard} cities={cities.data ?? []} onClose={() => setShowBoardForm(false)} onSaved={async (saved) => { setShowBoardForm(false); await loadBoards(false, saved.id); setShowArchived(false); setSelectedBoardId(saved.id); toast({ title: editingBoard ? "Quadro atualizado" : "Quadro criado", description: `“${saved.title}” está pronto para uso.` }); }} />}
+    {showTaskForm && selectedBoard && <CreateTaskDialog board={selectedBoard} cities={cities.data ?? []} onClose={() => setShowTaskForm(false)} onCreated={async (task) => { setShowTaskForm(false); setSelectedTaskId(task.id); await loadTasks(selectedBoard.id); await loadBoardDetail(selectedBoard.id); toast({ title: "Tarefa criada", description: `“${task.title}” foi adicionada ao quadro.` }); }} />}
     {selectedTaskId && <TaskDetailDialog taskId={selectedTaskId} boards={boards} onClose={() => setSelectedTaskId(null)} onChanged={async (task) => { await loadTasks(task.boardId); await loadBoardDetail(task.boardId); if (task.boardId !== selectedBoardId) setSelectedBoardId(task.boardId); }} onDelete={(task) => void deleteTask(task)} onShare={(task) => setShareTask(task)} />}
     {shareTask && <ShareTaskDialog task={shareTask} onClose={() => setShareTask(null)} />}
   </OpsShell>;
@@ -677,6 +681,7 @@ function TaskDetailDialog({ taskId, boards, onClose, onChanged, onDelete, onShar
       const updated = await json<Task>(await authFetch(`/api/tasks/${detail.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updates) }));
       setDetail((current) => current ? { ...current, ...updated } : current);
       await onChanged(updated);
+      toast({ title: "Tarefa atualizada", description: "Os dados da tarefa foram salvos." });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível salvar a tarefa.");
     } finally {
@@ -689,6 +694,7 @@ function TaskDetailDialog({ taskId, boards, onClose, onChanged, onDelete, onShar
       await json<unknown>(await authFetch(path, init));
       await loadDetail();
       if (detail) await onChanged(detail);
+      toast({ title: "Colaboração atualizada", description: "A alteração foi registrada na tarefa." });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível atualizar a colaboração.");
     }
@@ -712,6 +718,26 @@ function TaskDetailDialog({ taskId, boards, onClose, onChanged, onDelete, onShar
     if (!comment.trim() || !can("tasks:collaborate")) return;
     await collaborate(`/api/tasks/${taskId}/comments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: comment.trim() }) });
     setComment("");
+  }
+
+  function removeChecklistItem(item: { id: number; title: string }) {
+    confirmWithToast({
+      title: "Excluir item do checklist?",
+      description: `“${item.title}” será removido permanentemente.`,
+      actionLabel: "Excluir",
+      variant: "destructive",
+      onConfirm: () => void collaborate(`/api/tasks/${taskId}/checklist/${item.id}`, { method: "DELETE" }),
+    });
+  }
+
+  function removeMember(member: { id: number; fullName: string }) {
+    confirmWithToast({
+      title: "Remover membro da tarefa?",
+      description: `${member.fullName} deixará de acompanhar esta tarefa.`,
+      actionLabel: "Remover",
+      variant: "destructive",
+      onConfirm: () => void collaborate(`/api/tasks/${taskId}/members/${member.id}`, { method: "DELETE" }),
+    });
   }
 
   const availableMembers = useMemo(() => memberOptions.filter((option) => !detail?.members.some((member) => member.id === option.id)), [detail?.members, memberOptions]);
@@ -740,13 +766,13 @@ function TaskDetailDialog({ taskId, boards, onClose, onChanged, onDelete, onShar
           {can("tasks:update") && <button disabled={saving} className="flex h-10 items-center justify-center rounded-lg bg-primary px-4 text-xs font-extrabold text-primary-foreground disabled:opacity-60" data-testid="button-save-task-detail">{saving ? "Salvando…" : "Salvar campos"}</button>}
         </form>
 
-        <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-primary">Checklist</p><p className="mt-1 text-xs text-muted-foreground">{detail.checklist.filter((item) => item.completed).length} de {detail.checklist.length} concluídos</p></div><CheckSquare size={17} className="text-primary" /></div>{detail.checklist.length ? <div className="space-y-2">{detail.checklist.map((item) => <div key={item.id} className="flex items-center gap-2 rounded-lg border border-border p-2.5" data-testid={`checklist-item-${item.id}`}><button disabled={!can("tasks:collaborate")} onClick={() => void collaborate(`/api/tasks/${taskId}/checklist/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: !item.completed }) })} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${item.completed ? "border-emerald-500 bg-emerald-500 text-white" : "border-input bg-background"}`} aria-label={item.completed ? `Reabrir ${item.title}` : `Concluir ${item.title}`} data-testid={`button-toggle-checklist-${item.id}`}>{item.completed && <Check size={13} />}</button><span className={`min-w-0 flex-1 text-xs ${item.completed ? "text-muted-foreground line-through" : "font-semibold"}`}>{item.title}</span>{can("tasks:collaborate") && <button onClick={() => void collaborate(`/api/tasks/${taskId}/checklist/${item.id}`, { method: "DELETE" })} className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`Excluir ${item.title}`} data-testid={`button-delete-checklist-${item.id}`}><Trash2 size={13} /></button>}</div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Nenhum item adicionado.</p>}{can("tasks:collaborate") && <form onSubmit={addChecklist} className="mt-3 flex gap-2"><input value={checklistTitle} onChange={(event) => setChecklistTitle(event.target.value)} placeholder="Adicionar item" className="field" data-testid="input-checklist-title" /><button disabled={!checklistTitle.trim()} className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-secondary px-3 text-xs font-extrabold text-secondary-foreground disabled:opacity-50" data-testid="button-add-checklist"><Plus size={14} /> Adicionar</button></form>}</section>
+         <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-primary">Checklist</p><p className="mt-1 text-xs text-muted-foreground">{detail.checklist.filter((item) => item.completed).length} de {detail.checklist.length} concluídos</p></div><CheckSquare size={17} className="text-primary" /></div>{detail.checklist.length ? <div className="space-y-2">{detail.checklist.map((item) => <div key={item.id} className="flex items-center gap-2 rounded-lg border border-border p-2.5" data-testid={`checklist-item-${item.id}`}><button disabled={!can("tasks:collaborate")} onClick={() => void collaborate(`/api/tasks/${taskId}/checklist/${item.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ completed: !item.completed }) })} className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${item.completed ? "border-emerald-500 bg-emerald-500 text-white" : "border-input bg-background"}`} aria-label={item.completed ? `Reabrir ${item.title}` : `Concluir ${item.title}`} data-testid={`button-toggle-checklist-${item.id}`}>{item.completed && <Check size={13} />}</button><span className={`min-w-0 flex-1 text-xs ${item.completed ? "text-muted-foreground line-through" : "font-semibold"}`}>{item.title}</span>{can("tasks:collaborate") && <button onClick={() => removeChecklistItem(item)} className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`Excluir ${item.title}`} data-testid={`button-delete-checklist-${item.id}`}><Trash2 size={13} /></button>}</div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Nenhum item adicionado.</p>}{can("tasks:collaborate") && <form onSubmit={addChecklist} className="mt-3 flex gap-2"><input value={checklistTitle} onChange={(event) => setChecklistTitle(event.target.value)} placeholder="Adicionar item" className="field" data-testid="input-checklist-title" /><button disabled={!checklistTitle.trim()} className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-secondary px-3 text-xs font-extrabold text-secondary-foreground disabled:opacity-50" data-testid="button-add-checklist"><Plus size={14} /> Adicionar</button></form>}</section>
 
         <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-primary">Comentários</p><p className="mt-1 text-xs text-muted-foreground">Registre decisões e próximos passos.</p></div><MessageCircle size={17} className="text-primary" /></div>{detail.comments.length ? <div className="space-y-3">{detail.comments.map((item) => <div key={item.id} className="rounded-lg border border-border p-3" data-testid={`comment-${item.id}`}><div className="flex items-center justify-between gap-2"><span className="text-xs font-extrabold">{item.userName}</span><span className="text-[10px] text-muted-foreground">{formatDate(item.createdAt)}</span></div><p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">{item.body}</p></div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Ainda não há comentários nesta tarefa.</p>}{can("tasks:collaborate") && <form onSubmit={addComment} className="mt-3 space-y-2"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Escreva uma atualização para a equipe…" className="min-h-20 w-full rounded-lg border border-input bg-background p-3 text-xs outline-none focus:ring-2 focus:ring-ring" data-testid="input-task-comment" /><button disabled={!comment.trim()} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-secondary px-3 text-xs font-extrabold text-secondary-foreground disabled:opacity-50" data-testid="button-add-comment"><MessageCircle size={14} /> Comentar</button></form>}</section>
       </div>
 
       <div className="space-y-5">
-        <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-primary">Colaboração</p><p className="mt-1 text-xs text-muted-foreground">{detail.members.length} membro{detail.members.length === 1 ? "" : "s"} na tarefa</p></div><UsersRound size={17} className="text-primary" /></div>{detail.members.length ? <div className="space-y-2">{detail.members.map((member) => <div key={member.id} className="flex items-center gap-3 rounded-lg border border-border p-2.5" data-testid={`task-member-${member.id}`}><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-extrabold text-primary">{member.fullName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-extrabold">{member.fullName}</p><p className="truncate text-[10px] text-muted-foreground">{member.role.replaceAll("_", " ")}</p></div>{can("tasks:collaborate") && <button onClick={() => void collaborate(`/api/tasks/${taskId}/members/${member.id}`, { method: "DELETE" })} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`Remover ${member.fullName}`} data-testid={`button-remove-member-${member.id}`}><X size={14} /></button>}</div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Nenhum membro adicionado.</p>}{can("tasks:collaborate") && <div className="mt-3 flex gap-2"><select value={memberId} onChange={(event) => setMemberId(event.target.value)} className="field" data-testid="select-add-member"><option value="">Adicionar membro</option>{availableMembers.map((member) => <option key={member.id} value={member.id}>{member.fullName} · {member.role.replaceAll("_", " ")}</option>)}</select><button onClick={() => void addMember()} disabled={!memberId} className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-secondary px-3 text-xs font-extrabold text-secondary-foreground disabled:opacity-50" data-testid="button-add-member"><UserPlus size={14} /> Adicionar</button></div>}</section>
+         <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-4 flex items-center justify-between"><div><p className="mono-label text-primary">Colaboração</p><p className="mt-1 text-xs text-muted-foreground">{detail.members.length} membro{detail.members.length === 1 ? "" : "s"} na tarefa</p></div><UsersRound size={17} className="text-primary" /></div>{detail.members.length ? <div className="space-y-2">{detail.members.map((member) => <div key={member.id} className="flex items-center gap-3 rounded-lg border border-border p-2.5" data-testid={`task-member-${member.id}`}><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-extrabold text-primary">{member.fullName.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-xs font-extrabold">{member.fullName}</p><p className="truncate text-[10px] text-muted-foreground">{member.role.replaceAll("_", " ")}</p></div>{can("tasks:collaborate") && <button onClick={() => removeMember(member)} className="rounded p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label={`Remover ${member.fullName}`} data-testid={`button-remove-member-${member.id}`}><X size={14} /></button>}</div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Nenhum membro adicionado.</p>}{can("tasks:collaborate") && <div className="mt-3 flex gap-2"><select value={memberId} onChange={(event) => setMemberId(event.target.value)} className="field" data-testid="select-add-member"><option value="">Adicionar membro</option>{availableMembers.map((member) => <option key={member.id} value={member.id}>{member.fullName} · {member.role.replaceAll("_", " ")}</option>)}</select><button onClick={() => void addMember()} disabled={!memberId} className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-secondary px-3 text-xs font-extrabold text-secondary-foreground disabled:opacity-50" data-testid="button-add-member"><UserPlus size={14} /> Adicionar</button></div>}</section>
 
         <section className="rounded-xl border border-border bg-background/50 p-4"><div className="mb-4 flex items-center gap-2"><History size={17} className="text-primary" /><div><p className="mono-label text-primary">Histórico</p><p className="mt-1 text-xs text-muted-foreground">Atividade registrada no servidor.</p></div></div>{detail.activity.length ? <div className="space-y-3 border-l border-border pl-4">{detail.activity.map((item) => <div key={item.id} className="relative" data-testid={`activity-${item.id}`}><span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-card bg-primary" /><p className="text-xs font-bold">{item.actorName}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{item.detail || item.action.replaceAll("_", " ")} · {formatDate(item.createdAt)}</p></div>)}</div> : <p className="rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">Nenhuma atividade registrada.</p>}</section>
 
@@ -802,6 +828,7 @@ function ShareTaskDialog({ task, onClose }: { task: Task; onClose: () => void })
       }));
       setPrepared(response.messages);
       await load();
+      toast({ title: "Mensagens preparadas", description: "Revise e abra cada conversa para confirmar o envio." });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível preparar as mensagens.");
     } finally {

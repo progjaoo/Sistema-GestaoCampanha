@@ -3,6 +3,7 @@
 - [API codegen body names](api-codegen-body-names.md) — inline OpenAPI request bodies can collide with Orval Zod type exports; prefer reusable component schemas.
 - [Personal WhatsApp sharing](personal-whatsapp-sharing.md) — personal-number delivery stays user-confirmed through a prefilled wa.me link, never unofficial automation.
 - [Campaign responsive UI](campaign-responsive-ui.md) — keep Planilha as a true spreadsheet grid and preserve compact, labeled navigation across desktop and mobile.
+- [Auth user management](auth-user-management.md) — hard-delete only unreferenced accounts; otherwise block access while preserving operational history.
 - [Public agenda scope](public-agenda-scope.md) — weekly public links snapshot territorial scope and non-admin users may prepare only links they created.
 - [Populated-table identity migrations](populated-table-identity-migrations.md) — add identity columns and supporting uniqueness before asking Drizzle to add dependent foreign keys.
 - [Campaign frontend build environment](campaign-build-env.md) — direct Vite builds require both PORT and BASE_PATH from the artifact manifest.

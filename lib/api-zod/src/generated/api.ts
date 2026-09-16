@@ -141,6 +141,7 @@ export const createAuthUserBodyTwoPasswordMin = 8;
 
 
 export const CreateAuthUserBody = zod.object({
+  "email": zod.string().email(),
   "fullName": zod.string(),
   "role": zod.string(),
   "regionId": zod.number().int().nullish(),
@@ -148,7 +149,8 @@ export const CreateAuthUserBody = zod.object({
   "leadershipId": zod.number().int().nullish(),
   "isActive": zod.boolean().optional(),
   "canCreateLeaderUsers": zod.boolean().optional(),
-  "password": zod.string().min(createAuthUserBodyOnePasswordMin)
+  "password": zod.string().min(createAuthUserBodyOnePasswordMin),
+  "phone": zod.string().nullish()
 }).and(zod.object({
   "email": zod.string().email(),
   "password": zod.string().min(createAuthUserBodyTwoPasswordMin)
@@ -172,6 +174,7 @@ export const updateAuthUserBodyPasswordMin = 8;
 
 
 export const UpdateAuthUserBody = zod.object({
+  "email": zod.string().email().optional(),
   "fullName": zod.string(),
   "role": zod.string(),
   "regionId": zod.number().int().nullish(),
@@ -179,10 +182,24 @@ export const UpdateAuthUserBody = zod.object({
   "leadershipId": zod.number().int().nullish(),
   "isActive": zod.boolean().optional(),
   "canCreateLeaderUsers": zod.boolean().optional(),
-  "password": zod.string().min(updateAuthUserBodyPasswordMin).optional()
+  "password": zod.string().min(updateAuthUserBodyPasswordMin).optional(),
+  "phone": zod.string().nullish()
 })
 
 export const UpdateAuthUserResponse = zod.unknown()
+
+
+/**
+ * @summary Delete a system user
+ */
+
+
+
+export const DeleteAuthUserParams = zod.object({
+  "id": zod.coerce.number().int().min(1)
+})
+
+export const DeleteAuthUserResponse = zod.unknown()
 
 
 /**

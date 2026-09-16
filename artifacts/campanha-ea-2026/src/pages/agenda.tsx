@@ -5,6 +5,7 @@ import { authFetch, useAuth } from "@/lib/auth";
 import { ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
 import { confirmWithToast } from "@/lib/confirm-toast";
 import { useOfflineSnapshot } from "@/lib/connectivity";
+import { toast } from "@/hooks/use-toast";
 
 type EventRow = { id: number; source: "google"; googleHtmlLink: string | null; title: string; description: string | null; location: string | null; startsAt: string; endsAt: string; cityId: number; cityName: string; regionName: string; status: string; syncStatus: string; lastSyncedAt: string | null; lastSyncError: string | null };
 type SyncStatus = { provider: string; status: string; lastAttemptedAt: string | null; lastSyncedAt: string | null; lastError: string | null };
@@ -86,8 +87,8 @@ export default function AgendaPage() {
       setSyncStates(cached.syncStates);
     }
   }, [cached, loading, networkResolved]);
-  async function sync() { try { await read(await authFetch("/api/calendar/sync", { method: "POST" })); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível sincronizar."); } }
-  async function acknowledge(event: EventRow) { localStorage.setItem(`ea-event-seen-${event.id}`, "1"); await authFetch(`/api/calendar/events/${event.id}/acknowledge`, { method: "POST" }).catch(() => undefined); setNotice(null); }
+  async function sync() { try { await read(await authFetch("/api/calendar/sync", { method: "POST" })); toast({ title: "Agenda sincronizada", description: "Os eventos foram atualizados." }); await load(); } catch (reason) { const message = reason instanceof Error ? reason.message : "Não foi possível sincronizar."; setError(message); toast({ title: "Não foi possível sincronizar", description: message, variant: "destructive" }); } }
+  async function acknowledge(event: EventRow) { localStorage.setItem(`ea-event-seen-${event.id}`, "1"); await authFetch(`/api/calendar/events/${event.id}/acknowledge`, { method: "POST" }).catch(() => undefined); setNotice(null); toast({ title: "Aviso dispensado", description: `O evento “${event.title}” foi reconhecido.` }); }
   function deleteEvent(event: EventRow) {
     if (!can("calendar:manage")) return;
     confirmWithToast({
@@ -105,6 +106,7 @@ export default function AgendaPage() {
       await read(await authFetch(`/api/calendar/events/${event.id}`, { method: "DELETE" }));
       setEvents((current) => current.filter((item) => item.id !== event.id));
       setNotice((current) => current?.id === event.id ? null : current);
+      toast({ title: "Evento excluído", description: `“${event.title}” foi removido da agenda.` });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível excluir o evento.");
     } finally {
@@ -118,6 +120,7 @@ export default function AgendaPage() {
       const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
       setShareLink(`${window.location.origin}${base}agenda/compartilhada/${share.token}`);
       setShareMessage("Link criado. Copie e envie para o Edson.");
+      toast({ title: "Link da agenda criado", description: "O link está pronto para ser copiado e enviado." });
        if (share.notification) {
          setPendingNotification(null);
          setAutomaticNotification(share.notification);
@@ -169,7 +172,7 @@ export default function AgendaPage() {
        </div>
      </article>) : <div className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Nenhum evento da agenda foi encontrado para o seu território.</div>}</div>}
      {can("calendar:manage") && <section className="mt-5 rounded-2xl border border-[#b8d6e8] bg-[#eaf2f8] p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="flex items-center gap-2 text-sm font-extrabold text-primary"><Link2 size={16} /> Compartilhar semana com Edson Albertassi</p><p className="mt-1 text-xs text-slate-600">Crie um link somente para a semana selecionada na visão de calendário.</p></div><div className="grid gap-2 sm:flex sm:flex-wrap"><button onClick={() => void createShareLink()} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-xs font-extrabold text-primary-foreground sm:w-auto">Gerar link da semana</button><button onClick={() => setShowWhatsAppShare(true)} className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 py-2.5 text-xs font-extrabold text-emerald-800 sm:w-auto"><MessageCircle size={14} /> Enviar agenda da semana</button></div></div>{shareLink && <div className="mt-4 flex flex-col gap-2 sm:flex-row"><input readOnly value={shareLink} className="h-10 min-w-0 flex-1 rounded-lg border border-[#b8d6e8] bg-white px-3 text-xs text-slate-600" /><button onClick={() => void copyShareLink()} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-primary bg-white px-4 text-xs font-extrabold text-primary"><Copy size={14} /> Copiar link</button></div>}{shareMessage && <p className="mt-2 text-xs font-bold text-primary">{shareMessage}</p>}</section>}
-      {showCreate && <CreateEventDialog cities={cities.data ?? []} onClose={() => setShowCreate(false)} onCreated={(payload) => { setEvents((current) => [...current, payload].sort((a, b) => a.startsAt.localeCompare(b.startsAt))); setShowCreate(false); setNotice(null); if (payload.notification) { setPendingNotification(null); setAutomaticNotification(payload.notification); } }} />}
+      {showCreate && <CreateEventDialog cities={cities.data ?? []} onClose={() => setShowCreate(false)} onCreated={(payload) => { setEvents((current) => [...current, payload].sort((a, b) => a.startsAt.localeCompare(b.startsAt))); setShowCreate(false); setNotice(null); toast({ title: "Evento criado", description: `“${payload.title}” foi adicionado à agenda.` }); if (payload.notification) { setPendingNotification(null); setAutomaticNotification(payload.notification); } }} />}
       {showWhatsAppShare && <ShareAgendaDialog weekStart={weekStart} weekLabel={weekLabel(weekStart)} onClose={() => setShowWhatsAppShare(false)} onAutomaticNotification={setAutomaticNotification} />}
       {automaticNotification && <AutomaticNotificationDialog notification={automaticNotification} onClose={() => setAutomaticNotification(null)} />}
     {notice && <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/35 p-4"><section className="w-full max-w-md rounded-2xl bg-card p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="mono-label text-primary">Aviso da sua cidade</p><h2 className="mt-1 text-xl font-extrabold">{notice.title}</h2></div><button onClick={() => void acknowledge(notice)} className="rounded-lg p-2 text-muted-foreground hover:bg-muted" aria-label="Fechar aviso"><X size={18} /></button></div><p className="mt-4 text-sm leading-6 text-muted-foreground">Haverá uma agenda de campanha em <strong className="text-foreground">{notice.cityName}</strong> em {new Date(notice.startsAt).toLocaleString("pt-BR")}{notice.location ? `, no local ${notice.location}` : ""}.</p>{notice.description && <p className="mt-3 rounded-xl bg-muted p-3 text-xs leading-5">{notice.description}</p>}<button onClick={() => void acknowledge(notice)} className="mt-6 h-11 w-full rounded-lg bg-primary text-sm font-extrabold text-primary-foreground">Entendi</button></section></div>}

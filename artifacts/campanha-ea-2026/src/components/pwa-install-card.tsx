@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Download, Info, Share, Smartphone, X } from "lucide-react";
+import { Download, Info, Link2, Share, Smartphone, X } from "lucide-react";
 import { usePwaInstall } from "@/lib/pwa";
+import { toast } from "@/hooks/use-toast";
 
 export function PwaInstallCard() {
   const { shouldShow, isIos, canPromptInstall, install, dismiss } = usePwaInstall();
@@ -11,6 +12,30 @@ export function PwaInstallCard() {
   async function handleInstall() {
     const result = await install();
     if (result === "instructions") setShowInstructions(true);
+  }
+
+  async function handleShare() {
+    const base = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+    const url = new URL(base, window.location.origin).toString();
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Campanha EA 2026",
+          text: "Acesse o sistema da Campanha EA 2026 e instale no celular.",
+          url,
+        });
+        return;
+      }
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(url);
+        toast({ title: "Link copiado", description: "Envie o link para o diretor ou para qualquer pessoa da equipe." });
+        return;
+      }
+      toast({ title: "Link do sistema", description: url });
+    } catch (reason) {
+      if (reason instanceof DOMException && reason.name === "AbortError") return;
+      toast({ title: "Não foi possível compartilhar", description: "Copie o endereço do navegador e envie para a equipe.", variant: "destructive" });
+    }
   }
 
   return (
@@ -38,15 +63,26 @@ export function PwaInstallCard() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleInstall}
-            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary-foreground px-4 py-3 text-xs font-extrabold text-primary shadow-sm transition-transform hover:-translate-y-0.5"
-            data-testid="button-install-pwa"
-          >
-            <Download size={15} />
-            {isIos ? "Como instalar no iPhone" : canPromptInstall ? "Instalar aplicativo" : "Ver como instalar"}
-          </button>
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
+            <button
+              type="button"
+              onClick={handleShare}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-primary-foreground/25 px-4 py-3 text-xs font-extrabold text-primary-foreground transition-colors hover:bg-primary-foreground/10"
+              data-testid="button-share-pwa-link"
+            >
+              <Link2 size={15} />
+              Compartilhar link
+            </button>
+            <button
+              type="button"
+              onClick={handleInstall}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary-foreground px-4 py-3 text-xs font-extrabold text-primary shadow-sm transition-transform hover:-translate-y-0.5"
+              data-testid="button-install-pwa"
+            >
+              <Download size={15} />
+              {isIos ? "Como instalar no iPhone" : canPromptInstall ? "Instalar aplicativo" : "Ver como instalar"}
+            </button>
+          </div>
         </div>
       </section>
 

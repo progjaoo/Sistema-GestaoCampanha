@@ -5,6 +5,7 @@ import { EmptyState, ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill 
 import { confirmWithToast } from "@/lib/confirm-toast";
 import { formatPostalCode } from "@/lib/form-utils";
 import { useOfflineSnapshot } from "@/lib/connectivity";
+import { toast } from "@/hooks/use-toast";
 
 type Material = { id: number; name: string; description: string | null; unit: string; isActive: boolean };
 type City = { id: number; name: string; regionName: string };
@@ -103,12 +104,12 @@ export default function MaterialWithdrawalsPage() {
     try {
       const body = { ...form, cityId: Number(form.cityId), responsibleUserId: Number(form.responsibleUserId), items: selectedItems };
       const response = await authFetch(editing ? `/api/material-withdrawals/${editing.id}` : "/api/material-withdrawals", { method: editing ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      await read(response); setShowForm(false); setNotice(editing ? "Retirada atualizada." : "Retirada registrada."); await load();
+      await read(response); setShowForm(false); setNotice(editing ? "Retirada atualizada." : "Retirada registrada."); toast({ title: editing ? "Retirada atualizada" : "Retirada registrada", description: "A operação foi salva com sucesso." }); await load();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível salvar a retirada."); }
     finally { setSaving(false); }
   }
   async function changeStatus(row: Withdrawal, status: string) {
-    try { const updated = await read<Withdrawal>(await authFetch(`/api/material-withdrawals/${row.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) })); setRows((current) => current.map((item) => item.id === updated.id ? { ...item, status: updated.status } : item)); setNotice("Status atualizado."); }
+    try { const updated = await read<Withdrawal>(await authFetch(`/api/material-withdrawals/${row.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) })); setRows((current) => current.map((item) => item.id === updated.id ? { ...item, status: updated.status } : item)); setNotice("Status atualizado."); toast({ title: "Status atualizado", description: `A retirada de ${row.cityName} foi atualizada.` }); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível atualizar o status."); }
   }
   async function deleteRow(row: Withdrawal) {
@@ -118,7 +119,7 @@ export default function MaterialWithdrawalsPage() {
       actionLabel: "Excluir",
       variant: "destructive",
       onConfirm: async () => {
-        try { await read(await authFetch(`/api/material-withdrawals/${row.id}`, { method: "DELETE" })); setRows((current) => current.filter((item) => item.id !== row.id)); setNotice("Retirada excluída."); }
+        try { await read(await authFetch(`/api/material-withdrawals/${row.id}`, { method: "DELETE" })); setRows((current) => current.filter((item) => item.id !== row.id)); setNotice("Retirada excluída."); toast({ title: "Retirada excluída", description: "O registro foi removido." }); }
         catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível excluir a retirada."); }
       },
     });
@@ -129,12 +130,12 @@ export default function MaterialWithdrawalsPage() {
       const method = catalogForm.id ? "PATCH" : "POST";
       const url = catalogForm.id ? `/api/materials/${catalogForm.id}` : "/api/materials";
       await read(await authFetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(catalogForm) }));
-      setCatalogForm({ id: 0, name: "", description: "", unit: "unidade" }); setNotice("Catálogo atualizado."); await load();
+      setCatalogForm({ id: 0, name: "", description: "", unit: "unidade" }); setNotice("Catálogo atualizado."); toast({ title: catalogForm.id ? "Material atualizado" : "Material adicionado", description: "O catálogo foi atualizado." }); await load();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível salvar o material."); }
     finally { setSaving(false); }
   }
   async function toggleCatalog(material: Material) {
-    try { await read(await authFetch(`/api/materials/${material.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !material.isActive }) })); await load(); }
+    try { await read(await authFetch(`/api/materials/${material.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: !material.isActive }) })); toast({ title: material.isActive ? "Material desativado" : "Material ativado", description: `${material.name} foi atualizado.` }); await load(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível atualizar o material."); }
   }
 

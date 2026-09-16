@@ -4,6 +4,7 @@ import { authFetch, useAuth } from "@/lib/auth";
 import { OpsShell, PageHeading } from "@/components/ops-shell";
 import { FieldError, StickyFormActions } from "@/components/mobile-form";
 import { formatPhone } from "@/lib/form-utils";
+import { toast } from "@/hooks/use-toast";
 
 type ProfileResponse = { user: Parameters<ReturnType<typeof useAuth>["updateUser"]>[0] };
 
@@ -46,8 +47,11 @@ export default function ProfilePage() {
       updateUser(body.user);
       setForm((current) => ({ ...current, password: "", passwordConfirmation: "" }));
       setMessage("Perfil atualizado.");
+      toast({ title: "Perfil atualizado", description: "Seus dados foram salvos com sucesso." });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Não foi possível salvar o perfil.");
+      const message = reason instanceof Error ? reason.message : "Não foi possível salvar o perfil.";
+      setError(message);
+      toast({ title: "Não foi possível salvar", description: message, variant: "destructive" });
     } finally {
       setSaving(false);
     }

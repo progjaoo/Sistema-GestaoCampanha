@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { useListLeaderships } from "@workspace/api-client-react";
 import { authFetch } from "@/lib/auth";
+import { toast } from "@/hooks/use-toast";
 
 type City = { id: number; name: string; regionName: string };
 
@@ -33,6 +34,7 @@ export function CreateLeaderAccountDialog({ cities, onClose }: { cities: City[];
         throw new Error(typeof body.error === "string" ? body.error : "Não foi possível criar o acesso.");
       }
       onClose();
+      toast({ title: "Usuário líder criado", description: `${form.fullName} já pode acessar a cidade selecionada.` });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível criar o acesso.");
     } finally {

@@ -815,6 +815,80 @@ export const useUpdateAuthUser = <TError = ErrorType<unknown>,
       return useMutation(getUpdateAuthUserMutationOptions(options));
     }
 
+export const getDeleteAuthUserUrl = (id: number,) => {
+
+
+
+
+  return `/api/auth/users/${id}`
+}
+
+/**
+ * @summary Delete a system user
+ */
+export const deleteAuthUser = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteAuthUserUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteAuthUserMutationKey = () => ['deleteAuthUser'] as const;
+
+export const getDeleteAuthUserMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAuthUser>>, TError,DeleteAuthUserMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAuthUser>>, TError,DeleteAuthUserMutationVariables, TContext> => {
+
+const mutationKey = getDeleteAuthUserMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAuthUser>>, DeleteAuthUserMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAuthUser(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAuthUserMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAuthUser>>>
+
+    export type DeleteAuthUserMutationError = ErrorType<unknown>
+    export type DeleteAuthUserMutationVariables = {id: number}
+
+    /**
+ * @summary Delete a system user
+ */
+export const useDeleteAuthUser = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAuthUser>>, TError,DeleteAuthUserMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAuthUser>>,
+        TError,
+        DeleteAuthUserMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeleteAuthUserMutationOptions(options));
+    }
+
 export const getGetCampaignOverviewUrl = () => {
 
 
