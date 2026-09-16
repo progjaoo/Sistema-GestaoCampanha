@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Archive, BarChart3, CalendarDays, ChevronRight, ClipboardCheck, FileSpreadsheet, Handshake, KanbanSquare, Map, Menu, MoreHorizontal, Search, ShieldCheck, UsersRound, X } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Archive, BarChart3, CalendarDays, ChevronDown, ChevronRight, ClipboardCheck, FileSpreadsheet, Handshake, KanbanSquare, LogOut, Map, Menu, MoreHorizontal, Search, ShieldCheck, UserRound, UsersRound, X } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/lib/auth';
+import { confirmWithToast } from '@/lib/confirm-toast';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const navItems = [
@@ -21,6 +22,8 @@ export function OpsShell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       const stored = localStorage.getItem('ea2026-sidebar-collapsed');
@@ -33,6 +36,17 @@ export function OpsShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     localStorage.setItem('ea2026-sidebar-collapsed', JSON.stringify(isCollapsed));
   }, [isCollapsed]);
+
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    function closeOnOutsideClick(event: PointerEvent) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    }
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, [profileMenuOpen]);
 
   const { user, can, logout } = useAuth();
   const active = (href: string) => href === '/' ? location === '/' : location.startsWith(href);
@@ -48,6 +62,17 @@ export function OpsShell({ children }: { children: ReactNode }) {
   const mobileMoreActive = mobileMoreItems.some((item) => active(item.href));
 
   const compactSidebar = isCollapsed && !open;
+
+  function requestLogout() {
+    setProfileMenuOpen(false);
+    confirmWithToast({
+      title: 'Sair do sistema?',
+      description: 'Sua sessão será encerrada neste dispositivo.',
+      actionLabel: 'Sair',
+      variant: 'destructive',
+      onConfirm: logout,
+    });
+  }
 
   return (
     <div className="min-h-[100dvh] bg-background text-foreground flex">
@@ -135,11 +160,54 @@ export function OpsShell({ children }: { children: ReactNode }) {
             <Link href="/liderancas" className="hidden items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-bold text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground md:flex" data-testid="link-quick-search">
               <Search size={14} /> Busca rápida
             </Link>
-            <Link href="/perfil" className="hidden text-right md:block hover:opacity-75"><p className="text-xs font-extrabold">{user?.fullName}</p><p className="mono-label text-muted-foreground">{user?.role.replaceAll('_', ' ')}</p></Link>
-            <Link href="/perfil" className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-extrabold text-primary-foreground transition hover:opacity-80 shrink-0" title="Meu perfil" aria-label="Meu perfil" data-testid="link-profile">{user?.fullName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</Link>
-            <button onClick={() => void logout()} className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-xs font-extrabold text-primary transition hover:bg-muted shrink-0" title="Sair" aria-label="Sair do sistema" data-testid="button-logout">
-              <X size={14} />
-            </button>
+            <div ref={profileMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setProfileMenuOpen((current) => !current)}
+                className="group flex items-center gap-2 rounded-xl p-1.5 text-left transition-colors hover:bg-muted"
+                aria-haspopup="menu"
+                aria-expanded={profileMenuOpen}
+                aria-label="Abrir menu do usuário"
+                data-testid="button-user-menu"
+              >
+                <span className="hidden min-w-0 text-right md:block">
+                  <span className="block max-w-[170px] truncate text-xs font-extrabold">{user?.fullName}</span>
+                  <span className="mono-label block truncate text-muted-foreground">{user?.role.replaceAll('_', ' ')}</span>
+                </span>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-extrabold text-primary-foreground transition group-hover:opacity-80">
+                  {user?.fullName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}
+                </span>
+                <ChevronDown size={14} className={`hidden text-muted-foreground transition-transform md:block ${profileMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {profileMenuOpen && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-border bg-card shadow-xl" role="menu" data-testid="user-menu">
+                  <div className="border-b border-border px-4 py-3">
+                    <p className="truncate text-sm font-extrabold">{user?.fullName}</p>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">{user?.email}</p>
+                  </div>
+                  <Link
+                    href="/perfil"
+                    onClick={() => setProfileMenuOpen(false)}
+                    className="flex min-h-12 items-center gap-3 px-4 text-sm font-bold text-foreground transition-colors hover:bg-muted"
+                    role="menuitem"
+                    data-testid="link-account"
+                  >
+                    <UserRound size={16} className="text-primary" />
+                    <span>Minha conta</span>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={requestLogout}
+                    className="flex min-h-12 w-full items-center gap-3 border-t border-border px-4 text-left text-sm font-bold text-destructive transition-colors hover:bg-destructive/5"
+                    role="menuitem"
+                    data-testid="button-logout"
+                  >
+                    <LogOut size={16} />
+                    <span>Sair</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
         <main className="flex-1 w-full mx-auto max-w-[1440px] px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-7 sm:px-7 lg:px-10 lg:py-10">{children}</main>
