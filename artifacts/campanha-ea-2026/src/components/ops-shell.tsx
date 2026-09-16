@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Archive, BarChart3, CalendarDays, ChevronDown, ChevronRight, ClipboardCheck, FileSpreadsheet, Handshake, KanbanSquare, LogOut, Map, Menu, MoreHorizontal, Search, ShieldCheck, UserRound, UsersRound, X } from 'lucide-react';
+import { Archive, BarChart3, CalendarDays, ChevronDown, ChevronRight, ClipboardCheck, FileSpreadsheet, Handshake, KanbanSquare, LogOut, Map, Menu, MoreHorizontal, Search, ShieldCheck, UserRound, UsersRound, WifiOff, X } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '@/lib/auth';
 import { confirmWithToast } from '@/lib/confirm-toast';
+import { formatLastUpdated, useConnectivity } from '@/lib/connectivity';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const navItems = [
@@ -49,6 +50,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
   }, [profileMenuOpen]);
 
   const { user, can, logout } = useAuth();
+  const { isOffline } = useConnectivity();
   const active = (href: string) => href === '/' ? location === '/' : location.startsWith(href);
   const visibleNavItems = navItems.filter((item) => !item.permission || can(item.permission));
   const mobilePrimaryHrefs = ['/', '/cobertura', '/kanban', '/agenda'];
@@ -210,6 +212,7 @@ export function OpsShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
+        {isOffline && <div className="mx-4 mt-3 flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900 sm:mx-7 lg:mx-10" role="status" data-testid="offline-banner"><WifiOff size={15} className="shrink-0" /><span>Conexão limitada: consultas podem mostrar o último retrato salvo. Alterações ficam disponíveis quando a conexão voltar.</span></div>}
         <main className="flex-1 w-full mx-auto max-w-[1440px] px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-7 sm:px-7 lg:px-10 lg:py-10">{children}</main>
       </div>
       {mobileMoreOpen && (
@@ -270,13 +273,14 @@ export function OpsShell({ children }: { children: ReactNode }) {
   );
 }
 
-export function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) {
+export function PageHeading({ eyebrow, title, description, action, lastUpdatedAt, stale }: { eyebrow: string; title: string; description: string; action?: ReactNode; lastUpdatedAt?: string | null; stale?: boolean }) {
   return (
     <div className="mb-7 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
       <div className="min-w-0">
         <p className="mono-label mb-2 text-primary">{eyebrow}</p>
         <h1 className="break-words text-[clamp(1.75rem,4vw,2.65rem)] font-extrabold leading-[1.05] tracking-[-.045em]">{title}</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{description}</p>
+        {lastUpdatedAt && <p className="mt-2 text-[11px] font-semibold text-muted-foreground">Última atualização: {formatLastUpdated(lastUpdatedAt)}{stale ? " · retrato salvo localmente" : ""}</p>}
       </div>
       {action && <div className="w-full lg:w-auto">{action}</div>}
     </div>

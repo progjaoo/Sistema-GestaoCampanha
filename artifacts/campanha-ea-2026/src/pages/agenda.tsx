@@ -4,6 +4,7 @@ import { useListCities } from "@workspace/api-client-react";
 import { authFetch, useAuth } from "@/lib/auth";
 import { ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
 import { confirmWithToast } from "@/lib/confirm-toast";
+import { useOfflineSnapshot } from "@/lib/connectivity";
 
 type EventRow = { id: number; source: "google"; googleHtmlLink: string | null; title: string; description: string | null; location: string | null; startsAt: string; endsAt: string; cityId: number; cityName: string; regionName: string; status: string; syncStatus: string; lastSyncedAt: string | null; lastSyncError: string | null };
 type SyncStatus = { provider: string; status: string; lastAttemptedAt: string | null; lastSyncedAt: string | null; lastError: string | null };
@@ -35,7 +36,7 @@ function shareRecipientKey(recipient: Pick<ShareRecipient, "id" | "type">) { ret
 function parseShareRecipientKey(value: string): { type: "user" | "leadership"; id: number } | null { const [type, rawId] = value.split(":"); const id = Number(rawId); return (type === "user" || type === "leadership") && Number.isInteger(id) && id > 0 ? { type, id } : null; }
 
 export default function AgendaPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const cities = useListCities();
   const [events, setEvents] = useState<EventRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,6 +52,9 @@ export default function AgendaPage() {
   const [automaticNotification, setAutomaticNotification] = useState<AutomaticNotification | null>(null);
   const [pendingNotification, setPendingNotification] = useState<AutomaticNotification | null>(null);
   const [deletingEventId, setDeletingEventId] = useState<number | null>(null);
+  const snapshot = useOfflineSnapshot<{ events: EventRow[]; syncStates: SyncStatus[] }>("agenda", { userId: user?.id ?? null });
+  const cached = snapshot.data;
+  const [networkResolved, setNetworkResolved] = useState(false);
 
   async function load() {
     setLoading(true); setError("");
@@ -62,16 +66,26 @@ export default function AgendaPage() {
       setEvents(rows);
       const sync = await read<{ states: SyncStatus[] }>(await authFetch("/api/calendar/sync-status"));
       setSyncStates(sync.states);
+      snapshot.saveSnapshot({ events: rows, syncStates: sync.states });
       const pending = rows.find((event) => event.status === "pending" && !localStorage.getItem(`ea-event-seen-${event.id}`));
       const pendingNotification = notifications.find((item) => item.messages.some((message) => message.status === "prepared"));
       setPendingNotification(pendingNotification ?? null);
       if (pending) {
         setNotice(pending);
       }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar a agenda."); }
-    finally { setLoading(false); }
+    } catch (reason) {
+      if (cached) { setEvents(cached.events); setSyncStates(cached.syncStates); }
+      else setError(reason instanceof Error ? reason.message : "Não foi possível carregar a agenda.");
+    }
+    finally { setNetworkResolved(true); setLoading(false); }
   }
   useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    if (!networkResolved && cached && !loading) {
+      setEvents(cached.events);
+      setSyncStates(cached.syncStates);
+    }
+  }, [cached, loading, networkResolved]);
   async function sync() { try { await read(await authFetch("/api/calendar/sync", { method: "POST" })); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível sincronizar."); } }
   async function acknowledge(event: EventRow) { localStorage.setItem(`ea-event-seen-${event.id}`, "1"); await authFetch(`/api/calendar/events/${event.id}/acknowledge`, { method: "POST" }).catch(() => undefined); setNotice(null); }
   function deleteEvent(event: EventRow) {
@@ -118,10 +132,10 @@ export default function AgendaPage() {
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => { const date = new Date(weekStart); date.setDate(date.getDate() + index); return date; }), [weekStart]);
   const weekEvents = events.filter((event) => { const key = eventDateKey(event); return key >= dateKey(weekStart) && key <= dateKey(days[6]); });
 
-  if (loading) return <OpsShell><PageHeading eyebrow="Agenda / território" title="Agenda da campanha" description="Eventos criados pelo Edson Albertassi ou pelo administrador aparecem aqui por cidade." /><LoadingRows count={4} /></OpsShell>;
-  if (error && !events.length) return <OpsShell><PageHeading eyebrow="Agenda / território" title="Agenda da campanha" description="Eventos criados pelo Edson Albertassi ou pelo administrador aparecem aqui por cidade." /><ErrorState label={error} onRetry={() => void load()} /></OpsShell>;
+  if (loading && !events.length && !cached) return <OpsShell><PageHeading eyebrow="Agenda / território" title="Agenda da campanha" description="Eventos criados pelo Edson Albertassi ou pelo administrador aparecem aqui por cidade." lastUpdatedAt={snapshot.savedAt} /><LoadingRows count={4} /></OpsShell>;
+  if (error && !events.length && !cached) return <OpsShell><PageHeading eyebrow="Agenda / território" title="Agenda da campanha" description="Eventos criados pelo Edson Albertassi ou pelo administrador aparecem aqui por cidade." /><ErrorState label={error} onRetry={() => void load()} /></OpsShell>;
   return <OpsShell>
-     <PageHeading eyebrow="Agenda / território" title="Agenda da campanha" description="Consulte a lista completa ou organize os compromissos em uma visão semanal." action={<div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">{can("calendar:manage") && <><button onClick={() => void sync()} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-border px-3 py-3 text-xs font-extrabold sm:flex-none"><RefreshCw size={14} /> Sincronizar</button><button onClick={() => setShowCreate(true)} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground sm:flex-none">Novo evento</button></>}</div>} />
+     <PageHeading eyebrow="Agenda / território" title="Agenda da campanha" description="Consulte a lista completa ou organize os compromissos em uma visão semanal." lastUpdatedAt={snapshot.savedAt} stale={Boolean(cached && !networkResolved)} action={<div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">{can("calendar:manage") && <><button onClick={() => void sync()} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-border px-3 py-3 text-xs font-extrabold sm:flex-none"><RefreshCw size={14} /> Sincronizar</button><button onClick={() => setShowCreate(true)} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground sm:flex-none">Novo evento</button></>}</div>} />
     {error && <p className="mb-4 rounded-xl bg-destructive/5 p-3 text-xs font-bold text-destructive">{error}</p>}
      {pendingNotification && can("calendar:manage") && <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="flex items-center gap-2 text-sm font-extrabold text-emerald-950"><MessageCircle size={16} className="shrink-0 text-emerald-700" /> Há mensagens de agenda preparadas</p><p className="mt-1 text-xs leading-5 text-emerald-800">Revise cada mensagem e confirme o envio diretamente no WhatsApp{pendingNotification.eventTitle ? ` para o evento “${pendingNotification.eventTitle}”` : "."}</p></div><div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row"><button onClick={() => { setAutomaticNotification(pendingNotification); setPendingNotification(null); }} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-xs font-extrabold text-white hover:bg-emerald-700"><MessageCircle size={14} /> Continuar preparação</button><button onClick={() => setPendingNotification(null)} className="inline-flex h-10 items-center justify-center rounded-lg border border-emerald-300 bg-white px-4 text-xs font-extrabold text-emerald-800 hover:bg-emerald-100">Agora não</button></div></section>}
     {can("calendar:view") && <section className="mb-5 rounded-2xl border border-border bg-card p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-extrabold">Saúde da sincronização</p><p className="mt-1 text-xs text-muted-foreground">Google Calendar alimenta a Agenda e continua como fonte única dos eventos.</p></div><div className="flex flex-wrap gap-2">{syncStates.map((state) => <span key={state.provider} className="rounded-full border border-border px-3 py-1.5 text-[11px] font-bold">Google: {state.status === "ok" ? "OK" : state.status === "error" ? "erro" : "aguardando"}{state.lastSyncedAt ? ` · ${new Date(state.lastSyncedAt).toLocaleString("pt-BR")}` : ""}</span>)}</div></div>{syncStates.some((state) => state.lastError) && <p className="mt-3 rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive">{syncStates.find((state) => state.lastError)?.lastError}</p>}</section>}

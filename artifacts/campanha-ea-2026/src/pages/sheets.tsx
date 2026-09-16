@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink, FileSpreadsheet, RefreshCw, Search, X } from "lucide-react";
 import { authFetch, useAuth } from "@/lib/auth";
 import { ErrorState, LoadingRows, OpsShell, PageHeading } from "@/components/ops-shell";
+import { HorizontalScrollHint } from "@/components/mobile-form";
+import { useOfflineSnapshot } from "@/lib/connectivity";
 
 type SheetData = {
   title: string;
@@ -36,13 +38,15 @@ function normalizeSearch(value: string) {
 }
 
 export default function SheetsPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [data, setData] = useState<SheetData | null>(null);
   const [tab, setTab] = useState("");
   const [tabQuery, setTabQuery] = useState("");
   const searchSelectionTimeoutRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const snapshot = useOfflineSnapshot<SheetData>("sheets", { userId: user?.id ?? null });
+  const cached = snapshot.data;
 
   async function load(selectedTab = tab) {
     setLoading(true);
@@ -51,9 +55,11 @@ export default function SheetsPage() {
       const query = selectedTab ? `?tab=${encodeURIComponent(selectedTab)}` : "";
       const next = await readJson<SheetData>(await authFetch(`/api/sheets/campaign${query}`));
       setData(next);
+      snapshot.saveSnapshot(next);
       if (!tab && next.selectedTab) setTab(next.selectedTab);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Não foi possível consultar a planilha.");
+      if (cached) setData(cached);
+      else setError(reason instanceof Error ? reason.message : "Não foi possível consultar a planilha.");
     } finally {
       setLoading(false);
     }
@@ -96,7 +102,7 @@ export default function SheetsPage() {
   }, []);
 
   if (!can("sheets:view")) return <OpsShell><PageHeading eyebrow="Integrações" title="Planilha da campanha" description="Seu perfil não possui permissão para consultar a fonte oficial." /></OpsShell>;
-  if (loading && !data) return <OpsShell><PageHeading eyebrow="Integrações / Google Sheets" title="Planilha da campanha" description="Consulta somente leitura da Campanha_EA_2026_REV-006." /><LoadingRows count={5} /></OpsShell>;
+  if (loading && !data) return <OpsShell><PageHeading eyebrow="Integrações / Google Sheets" title="Planilha da campanha" description="Consulta somente leitura da Campanha_EA_2026_REV-006." lastUpdatedAt={snapshot.savedAt} stale={Boolean(cached)} /><LoadingRows count={5} /></OpsShell>;
   if (error && !data) return <OpsShell><PageHeading eyebrow="Integrações / Google Sheets" title="Planilha da campanha" description="Consulta somente leitura da Campanha_EA_2026_REV-006." /><ErrorState label={error} onRetry={() => void load()} /></OpsShell>;
 
   return <OpsShell>
@@ -104,6 +110,8 @@ export default function SheetsPage() {
       eyebrow="Integrações / Google Sheets"
       title={data?.title ?? "Planilha da campanha"}
       description="Fonte oficial em modo somente leitura para conferência e cruzamento com os registros do sistema."
+      lastUpdatedAt={snapshot.savedAt}
+      stale={Boolean(cached && data === cached)}
       action={<div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">{data?.spreadsheetUrl && <a href={data.spreadsheetUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-card px-3 text-xs font-extrabold hover:bg-muted sm:flex-none" data-testid="link-open-google-sheets"><ExternalLink size={14} /> Abrir no Google Sheets</a>}<button onClick={() => void load()} className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-3 text-xs font-extrabold text-primary-foreground sm:flex-none" data-testid="button-refresh-sheet"><RefreshCw size={14} /> Atualizar</button></div>}
     />
     {error && <p className="mb-4 rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive">{error}</p>}
@@ -186,7 +194,7 @@ export default function SheetsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 p-3 sm:p-4">
         <div><p className="text-sm font-extrabold">Aba: {data?.selectedTab ?? "—"}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{data?.totalRows ?? 0} linhas carregadas · somente leitura</p></div>
       </div>
-      <div className="flex-1 overflow-auto bg-background scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+      <HorizontalScrollHint className="flex-1 overflow-auto bg-background scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
         <table className="min-w-max border-collapse text-left text-xs">
           <thead className="sticky top-0 z-10 bg-[#f8f9fa] shadow-[0_1px_0_hsl(var(--border))] dark:bg-[#1a1d1e]">
             <tr>
@@ -214,7 +222,7 @@ export default function SheetsPage() {
           </tbody>
         </table>
         {!data?.rows.length && <div className="flex flex-col items-center justify-center p-10 text-muted-foreground"><FileSpreadsheet size={32} className="mb-3 opacity-20" /><p className="text-sm font-semibold">A aba selecionada está vazia.</p></div>}
-      </div>
+      </HorizontalScrollHint>
     </section>
   </OpsShell>;
 }

@@ -23,6 +23,9 @@ import { useListCities, useListLeaderships } from "@workspace/api-client-react";
 import { authFetch, useAuth } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
 import { confirmWithToast } from "@/lib/confirm-toast";
+import { StickyFormActions } from "@/components/mobile-form";
+import { formatPhone } from "@/lib/form-utils";
+import { useOfflineSnapshot } from "@/lib/connectivity";
 
 type Board = {
   id: number;
@@ -232,7 +235,7 @@ function priorityTone(priority: string): "neutral" | "warning" | "success" | "da
 }
 
 export default function TasksPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const cities = useListCities();
   const [showArchived, setShowArchived] = useState(false);
   const [boards, setBoards] = useState<Board[]>([]);
@@ -250,6 +253,8 @@ export default function TasksPage() {
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [shareTask, setShareTask] = useState<Task | null>(null);
   const [draggingTaskId, setDraggingTaskId] = useState<number | null>(null);
+  const boardSnapshot = useOfflineSnapshot<Board[]>("task-boards", { userId: user?.id ?? null, archived: showArchived });
+  const taskSnapshot = useOfflineSnapshot<Task[]>("tasks", { userId: user?.id ?? null, boardId: selectedBoardId, filters });
 
   async function loadBoards(nextArchived = showArchived, preferredId?: number | null) {
     setLoadingBoards(true);
@@ -257,12 +262,14 @@ export default function TasksPage() {
     try {
       const nextBoards = await json<Board[]>(await authFetch(`/api/boards?archived=${nextArchived}`));
       setBoards(nextBoards);
+      boardSnapshot.saveSnapshot(nextBoards);
       setSelectedBoardId((current) => {
         const wanted = preferredId ?? current;
         return wanted && nextBoards.some((board) => board.id === wanted) ? wanted : (nextBoards[0]?.id ?? null);
       });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Não foi possível carregar os quadros.");
+      if (boardSnapshot.data) setBoards(boardSnapshot.data);
+      else setError(reason instanceof Error ? reason.message : "Não foi possível carregar os quadros.");
     } finally {
       setLoadingBoards(false);
     }
@@ -285,12 +292,14 @@ export default function TasksPage() {
       const nextTasks = await json<Task[]>(await authFetch(`/api/tasks?${params.toString()}`));
       if (requestId === tasksRequestId.current) {
         setTasks(nextTasks);
+        taskSnapshot.saveSnapshot(nextTasks);
         const deepLinkedTaskId = readTaskId();
         if (deepLinkedTaskId && nextTasks.some((task) => task.id === deepLinkedTaskId)) setSelectedTaskId(deepLinkedTaskId);
       }
     } catch (reason) {
       if (requestId === tasksRequestId.current) {
-        setError(reason instanceof Error ? reason.message : "Não foi possível carregar as tarefas do quadro.");
+        if (taskSnapshot.data) setTasks(taskSnapshot.data);
+        else setError(reason instanceof Error ? reason.message : "Não foi possível carregar as tarefas do quadro.");
       }
     } finally {
       if (requestId === tasksRequestId.current) setLoadingTasks(false);
@@ -418,22 +427,30 @@ export default function TasksPage() {
     });
   }
 
-  if (loadingBoards) {
-    return <OpsShell><PageHeading eyebrow="Operações / kanban" title="Tarefas da campanha" description="Organize frentes de trabalho por território e acompanhe cada entrega." /><LoadingRows count={5} /></OpsShell>;
-  }
-
-  if (error && !boards.length && !selectedBoardId) {
-    return <OpsShell><PageHeading eyebrow="Operações / kanban" title="Tarefas da campanha" description="Organize frentes de trabalho por território e acompanhe cada entrega." /><ErrorState label={error} onRetry={() => void loadBoards(showArchived)} /></OpsShell>;
-  }
-
   const selectedBoard = boards.find((board) => board.id === selectedBoardId) ?? null;
   const canCreateTask = can("tasks:create") && Boolean(selectedBoard && !selectedBoard.archived);
+
+  useEffect(() => {
+    if (canCreateTask && new URLSearchParams(window.location.search).get("create") === "1") {
+      setShowTaskForm(true);
+    }
+  }, [canCreateTask]);
+
+  if (loadingBoards && !boards.length && !boardSnapshot.data) {
+    return <OpsShell><PageHeading eyebrow="Operações / kanban" title="Tarefas da campanha" description="Organize frentes de trabalho por território e acompanhe cada entrega." lastUpdatedAt={boardSnapshot.savedAt} /><LoadingRows count={5} /></OpsShell>;
+  }
+
+  if (error && !boards.length && !selectedBoardId && !boardSnapshot.data) {
+    return <OpsShell><PageHeading eyebrow="Operações / kanban" title="Tarefas da campanha" description="Organize frentes de trabalho por território e acompanhe cada entrega." /><ErrorState label={error} onRetry={() => void loadBoards(showArchived)} /></OpsShell>;
+  }
 
   return <OpsShell>
     <PageHeading
       eyebrow="Operações / kanban"
       title="Tarefas da campanha"
       description="Um quadro por território. Mova o trabalho, registre decisões e mantenha a liderança certa no circuito."
+      lastUpdatedAt={taskSnapshot.savedAt ?? boardSnapshot.savedAt}
+      stale={Boolean(taskSnapshot.data || boardSnapshot.data) && Boolean(error)}
       action={canCreateTask ? <button onClick={() => setShowTaskForm(true)} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground" data-testid="button-create-task"><Plus size={15} /> Nova tarefa</button> : undefined}
     />
 
@@ -580,7 +597,7 @@ function BoardFormDialog({ board, cities, onClose, onSaved }: { board: Board | n
       <FieldLabel label="Descrição"><textarea value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-24 w-full rounded-lg border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" data-testid="input-board-description" /></FieldLabel>
       {!board && <FieldLabel label="Cidade"><select required value={cityId} onChange={(event) => setCityId(event.target.value)} className="field" data-testid="select-board-city"><option value="">Selecione uma cidade</option>{cities.map((city) => <option key={city.id} value={city.id}>{city.name} · {city.regionName}</option>)}</select></FieldLabel>}
       {error && <p className="rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive" data-testid="board-form-error">{error}</p>}
-      <button disabled={saving || !title.trim() || (!board && !cityId)} className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-extrabold text-primary-foreground disabled:opacity-60" data-testid="button-save-board">{saving ? "Salvando…" : board ? "Salvar alterações" : "Criar quadro"}</button>
+      <StickyFormActions><button disabled={saving || !title.trim() || (!board && !cityId)} className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-extrabold text-primary-foreground disabled:opacity-60" data-testid="button-save-board">{saving ? "Salvando…" : board ? "Salvar alterações" : "Criar quadro"}</button></StickyFormActions>
     </form>
   </ModalShell>;
 }
@@ -610,10 +627,10 @@ function CreateTaskDialog({ board, cities, onClose, onCreated }: { board: Board;
       <FieldLabel label="Detalhes"><textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} className="min-h-24 w-full rounded-lg border border-input bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" data-testid="input-task-description" /></FieldLabel>
       <div className="grid gap-4 sm:grid-cols-2"><FieldLabel label="Cidade"><select required value={form.cityId} onChange={(event) => setForm({ ...form, cityId: event.target.value, leadershipId: "", leadershipPhone: "" })} className="field" data-testid="select-task-city">{cities.filter((city) => city.id === board.cityId).map((city) => <option key={city.id} value={city.id}>{city.name} · {city.regionName}</option>)}</select></FieldLabel><FieldLabel label="Prioridade"><select value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })} className="field" data-testid="select-task-priority"><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></FieldLabel></div>
       <FieldLabel label="Liderança responsável"><select required disabled={!form.cityId || leaderships.isLoading} value={form.leadershipId} onChange={(event) => setForm({ ...form, leadershipId: event.target.value, leadershipPhone: "" })} className="field" data-testid="select-task-leadership"><option value="">{leaderships.isLoading ? "Carregando lideranças…" : "Selecione a liderança"}</option>{(leaderships.data?.items ?? []).map((leadership) => <option key={leadership.id} value={leadership.id}>{leadership.name} · {leadership.leadershipContact || "sem telefone"}</option>)}</select></FieldLabel>
-      {selectedLeadership && !selectedLeadership.leadershipContact && <label className="block rounded-xl border border-amber-200 bg-amber-50 p-3"><span className="mb-1.5 block text-xs font-extrabold text-amber-900">Telefone do responsável</span><p className="mb-2 text-[11px] leading-4 text-amber-800">Cadastre um telefone com DDD para habilitar o envio manual pelo WhatsApp.</p><input required type="tel" value={form.leadershipPhone} onChange={(event) => setForm({ ...form, leadershipPhone: event.target.value })} placeholder="(00) 00000-0000" className="h-10 w-full rounded-lg border border-amber-300 bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-amber-400" data-testid="input-task-leadership-phone" /></label>}
+       {selectedLeadership && !selectedLeadership.leadershipContact && <label className="block rounded-xl border border-amber-200 bg-amber-50 p-3"><span className="mb-1.5 block text-xs font-extrabold text-amber-900">Telefone do responsável</span><p className="mb-2 text-[11px] leading-4 text-amber-800">Cadastre um telefone com DDD para habilitar o envio manual pelo WhatsApp.</p><input required type="tel" inputMode="tel" value={form.leadershipPhone} onChange={(event) => setForm({ ...form, leadershipPhone: formatPhone(event.target.value) })} placeholder="(00) 00000-0000" className="h-10 w-full rounded-lg border border-amber-300 bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-amber-400" data-testid="input-task-leadership-phone" /></label>}
       <FieldLabel label="Prazo"><input type="datetime-local" value={form.dueAt} onChange={(event) => setForm({ ...form, dueAt: event.target.value })} className="field" data-testid="input-task-due-at" /></FieldLabel>
       {error && <p className="rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive" data-testid="task-form-error">{error}</p>}
-      <button disabled={saving || !form.leadershipId} className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-extrabold text-primary-foreground disabled:opacity-60" data-testid="button-save-task">{saving ? "Salvando…" : "Criar tarefa"}</button>
+       <StickyFormActions><button disabled={saving || !form.leadershipId} className="flex h-11 w-full items-center justify-center rounded-lg bg-primary text-sm font-extrabold text-primary-foreground disabled:opacity-60" data-testid="button-save-task">{saving ? "Salvando…" : "Criar tarefa"}</button></StickyFormActions>
     </form>
   </ModalShell>;
 }

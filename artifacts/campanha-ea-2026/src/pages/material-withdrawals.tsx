@@ -3,6 +3,8 @@ import { Archive, Check, ChevronDown, Edit3, MapPin, Package, Plus, RefreshCw, S
 import { authFetch, useAuth } from "@/lib/auth";
 import { EmptyState, ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
 import { confirmWithToast } from "@/lib/confirm-toast";
+import { formatPostalCode } from "@/lib/form-utils";
+import { useOfflineSnapshot } from "@/lib/connectivity";
 
 type Material = { id: number; name: string; description: string | null; unit: string; isActive: boolean };
 type City = { id: number; name: string; regionName: string };
@@ -29,7 +31,7 @@ async function read<T>(response: Response): Promise<T> {
 const blankForm = (): FormState => ({ cityId: "", responsibleUserId: "", postalCode: "", street: "", number: "", complement: "", neighborhood: "", addressCity: "", state: "", notes: "", items: {} });
 
 export default function MaterialWithdrawalsPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [rows, setRows] = useState<Withdrawal[]>([]);
   const [options, setOptions] = useState<Options>({ cities: [], users: [], materials: [] });
   const [form, setForm] = useState<FormState>(blankForm());
@@ -42,19 +44,34 @@ export default function MaterialWithdrawalsPage() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [catalogForm, setCatalogForm] = useState({ id: 0, name: "", description: "", unit: "unidade" });
+  const snapshot = useOfflineSnapshot<{ rows: Withdrawal[]; options: Options }>("materials", { userId: user?.id ?? null, search, statusFilter });
+  const cached = snapshot.data;
+  const [networkResolved, setNetworkResolved] = useState(false);
+
+  useEffect(() => {
+    if (can("materials:create") && new URLSearchParams(window.location.search).get("create") === "1") {
+      setShowForm(true);
+    }
+  }, [can]);
 
   async function load() {
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setNetworkResolved(false);
     try {
       const [withdrawals, initialOptions] = await Promise.all([
         read<Withdrawal[]>(await authFetch(`/api/material-withdrawals?${new URLSearchParams({ ...(search ? { search } : {}), ...(statusFilter ? { status: statusFilter } : {}) })}`)),
         read<Options>(await authFetch("/api/material-withdrawals/options")),
       ]);
-      setRows(withdrawals); setOptions(initialOptions);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar as retiradas."); }
-    finally { setLoading(false); }
+      setRows(withdrawals); setOptions(initialOptions); snapshot.saveSnapshot({ rows: withdrawals, options: initialOptions });
+    } catch (reason) { if (cached) { setRows(cached.rows); setOptions(cached.options); } else setError(reason instanceof Error ? reason.message : "Não foi possível carregar as retiradas."); }
+    finally { setNetworkResolved(true); setLoading(false); }
   }
   useEffect(() => { void load(); }, [search, statusFilter]);
+  useEffect(() => {
+    if (!networkResolved && cached && !loading) {
+      setRows(cached.rows);
+      setOptions(cached.options);
+    }
+  }, [cached, loading, networkResolved]);
 
   async function loadOptions(cityId: string) {
     try {
@@ -64,7 +81,7 @@ export default function MaterialWithdrawalsPage() {
       setForm((current) => ({ ...current, responsibleUserId: next.users[0] ? String(next.users[0].id) : "" }));
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível carregar os responsáveis."); }
   }
-  function setField<K extends keyof FormState>(key: K, value: FormState[K]) { setForm((current) => ({ ...current, [key]: value })); }
+  function setField<K extends keyof FormState>(key: K, value: FormState[K]) { const normalized = key === "postalCode" ? formatPostalCode(String(value)) : key === "number" ? String(value).replace(/\D/g, "") : value; setForm((current) => ({ ...current, [key]: normalized as FormState[K] })); }
   function selectCity(value: string) { setField("cityId", value); setField("responsibleUserId", ""); void loadOptions(value); }
   function toggleMaterial(id: number, selected: boolean) {
     setForm((current) => ({ ...current, items: { ...current.items, [id]: { selected, quantity: current.items[id]?.quantity ?? "" } } }));
@@ -123,7 +140,7 @@ export default function MaterialWithdrawalsPage() {
 
   const selectedCount = useMemo(() => Object.values(form.items).filter((item) => item.selected).length, [form.items]);
   return <OpsShell>
-    <PageHeading eyebrow="Operações / materiais" title="Retirada de material" description="Controle materiais separados por cidade, endereço de entrega e responsável, com histórico de status." action={can("materials:create") ? <button onClick={openNew} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-extrabold text-primary-foreground"><Plus size={16} /> Nova retirada</button> : undefined} />
+     <PageHeading eyebrow="Operações / materiais" title="Retirada de material" description="Controle materiais separados por cidade, endereço de entrega e responsável, com histórico de status." lastUpdatedAt={snapshot.savedAt} stale={Boolean(cached && !networkResolved)} action={can("materials:create") ? <button onClick={openNew} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-extrabold text-primary-foreground"><Plus size={16} /> Nova retirada</button> : undefined} />
     {error && <div className="mb-5"><ErrorState label={error} onRetry={() => { setError(""); void load(); }} /></div>}
     {notice && <div className="mb-5 flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-800"><span>{notice}</span><button onClick={() => setNotice("")}><X size={14} /></button></div>}
     <div className="mb-6 grid gap-3 sm:grid-cols-[1fr_190px_auto]">

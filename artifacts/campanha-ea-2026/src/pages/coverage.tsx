@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Building2,
@@ -22,7 +22,10 @@ import type {
   City,
   Region,
 } from '@workspace/api-client-react';
+import { useAuth } from '@/lib/auth';
+import { useOfflineSnapshot } from '@/lib/connectivity';
 import { ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from '@/components/ops-shell';
+import { HorizontalScrollHint } from '@/components/mobile-form';
 
 function CityLeadershipDialog({
   city,
@@ -57,7 +60,8 @@ function CityLeadershipDialog({
         </header>
         <div className="min-h-0 overflow-auto p-4 sm:p-6">
           {query.isLoading ? <LoadingRows count={4} /> : query.isError ? <ErrorState onRetry={() => void query.refetch()} /> : records.length ? (
-            <div className="overflow-x-auto rounded-2xl border border-border">
+            <div className="rounded-2xl border border-border">
+            <HorizontalScrollHint>
               <table className="min-w-[920px] w-full text-left" data-testid="city-leadership-table">
                 <thead className="bg-muted/55">
                   <tr className="border-b border-border">
@@ -93,6 +97,7 @@ function CityLeadershipDialog({
                   </tr>)}
                 </tbody>
               </table>
+            </HorizontalScrollHint>
             </div>
           ) : <div className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">Nenhuma liderança cadastrada nesta cidade.</div>}
         </div>
@@ -133,6 +138,7 @@ function RegionGroup({
 }
 
 export default function CoveragePage() {
+  const { user } = useAuth();
   const regions = useListRegions();
   const deputies = useListFederalDeputies();
   const overview = useGetCampaignOverview();
@@ -142,12 +148,24 @@ export default function CoveragePage() {
   const [selectedCity, setSelectedCity] = useState<City | null>(null);
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Record<number, boolean>>({});
+  const snapshot = useOfflineSnapshot<{
+    regions: typeof regions.data;
+    deputies: typeof deputies.data;
+    overview: typeof overview.data;
+    cities: typeof cities.data;
+  }>('coverage', { userId: user?.id ?? null, deputyId: selectedDeputyId ?? null });
 
-  const allRegions = regions.data ?? [];
-  const allianceDeputies = (deputies.data ?? []).filter((deputy) => deputy.isAlliance);
+  const cached = snapshot.data;
+  const allRegions = regions.data ?? cached?.regions ?? [];
+  const allianceDeputies = (deputies.data ?? cached?.deputies ?? []).filter((deputy) => deputy.isAlliance);
   const activeDeputyId = selectedDeputyId;
   const cities = useListCities({ federalDeputyId: activeDeputyId });
-  const allCities = cities.data ?? [];
+  const allCities = cities.data ?? cached?.cities ?? [];
+  useEffect(() => {
+    if (regions.data || deputies.data || overview.data || cities.data) {
+      snapshot.saveSnapshot({ regions: regions.data, deputies: deputies.data, overview: overview.data, cities: cities.data });
+    }
+  }, [regions.data, deputies.data, overview.data, cities.data, snapshot.saveSnapshot]);
   const filteredCities = useMemo(() => {
     const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR');
     return allCities.filter((city) => {
@@ -169,14 +187,16 @@ export default function CoveragePage() {
 
   const toggleRegion = (id: number) => setExpanded((current) => ({ ...current, [id]: !(current[id] ?? true) }));
 
-  if (regions.isLoading || deputies.isLoading || overview.isLoading || cities.isLoading) return <OpsShell><PageHeading eyebrow="Operação / cobertura" title="Cobertura" description="Regiões, cidades e relações de campo." /><LoadingRows count={5} /></OpsShell>;
-  if (regions.isError || deputies.isError || overview.isError || cities.isError) return <OpsShell><PageHeading eyebrow="Operação / cobertura" title="Cobertura" description="Regiões, cidades e relações de campo." /><ErrorState onRetry={() => { void regions.refetch(); void deputies.refetch(); void overview.refetch(); void cities.refetch(); }} /></OpsShell>;
+  if (regions.isLoading || deputies.isLoading || overview.isLoading || cities.isLoading) return <OpsShell><PageHeading eyebrow="Operação / cobertura" title="Cobertura" description="Regiões, cidades e relações de campo." lastUpdatedAt={snapshot.savedAt} stale={Boolean(cached)} />{cached ? null : <LoadingRows count={5} />}</OpsShell>;
+  if ((regions.isError || deputies.isError || overview.isError || cities.isError) && !cached) return <OpsShell><PageHeading eyebrow="Operação / cobertura" title="Cobertura" description="Regiões, cidades e relações de campo." /><ErrorState onRetry={() => { void regions.refetch(); void deputies.refetch(); void overview.refetch(); void cities.refetch(); }} /></OpsShell>;
 
   return <OpsShell>
     <PageHeading
       eyebrow="Operação / cobertura"
       title="Visão macro por cidade"
       description="Abra uma cidade para conferir lideranças, articuladores, contatos e quem cada relação está apoiando."
+      lastUpdatedAt={snapshot.savedAt}
+      stale={Boolean(cached && (!regions.data || !cities.data))}
       action={<div className="flex flex-wrap gap-2">
         <select value={selectedDeputyId ?? ''} onChange={(event) => { setSelectedDeputyId(event.target.value ? Number(event.target.value) : undefined); setSelectedCity(null); }} className="h-10 rounded-lg border border-border bg-card px-3 text-xs font-bold text-muted-foreground outline-none focus:ring-2 focus:ring-ring" aria-label="Filtrar por deputado dobrado" data-testid="select-filter-deputy">
           <option value="">Todos os dobrados</option>

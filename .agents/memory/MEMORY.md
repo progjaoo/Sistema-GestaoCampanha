@@ -5,3 +5,4 @@
 - [Campaign responsive UI](campaign-responsive-ui.md) — keep Planilha as a true spreadsheet grid and preserve compact, labeled navigation across desktop and mobile.
 - [Public agenda scope](public-agenda-scope.md) — weekly public links snapshot territorial scope and non-admin users may prepare only links they created.
 - [Populated-table identity migrations](populated-table-identity-migrations.md) — add identity columns and supporting uniqueness before asking Drizzle to add dependent foreign keys.
+- [Campaign frontend build environment](campaign-build-env.md) — direct Vite builds require both PORT and BASE_PATH from the artifact manifest.

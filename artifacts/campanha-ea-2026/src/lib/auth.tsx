@@ -10,6 +10,7 @@ import {
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 
 const TOKEN_KEY = "ea2026_access_token";
+const USER_KEY = "ea2026_auth_user";
 
 function getStoredToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -22,9 +23,28 @@ function storeToken(token: string, rememberMe: boolean) {
   (rememberMe ? window.localStorage : window.sessionStorage).setItem(TOKEN_KEY, token);
 }
 
+function getStoredUser(): AuthUser | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(USER_KEY) ?? window.sessionStorage.getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+function storeUser(user: AuthUser, rememberMe: boolean) {
+  window.localStorage.removeItem(USER_KEY);
+  window.sessionStorage.removeItem(USER_KEY);
+  (rememberMe ? window.localStorage : window.sessionStorage).setItem(USER_KEY, JSON.stringify(user));
+}
+
 function removeStoredToken() {
   window.localStorage.removeItem(TOKEN_KEY);
   window.sessionStorage.removeItem(TOKEN_KEY);
+  window.localStorage.removeItem(USER_KEY);
+  window.sessionStorage.removeItem(USER_KEY);
 }
 
 export type AuthUser = {
@@ -61,7 +81,19 @@ export function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const token = getStoredToken();
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  return fetch(input, { ...init, headers });
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method !== "GET" && typeof navigator !== "undefined" && !navigator.onLine) {
+    return Promise.reject(new Error("Esta ação precisa de conexão. Tente novamente quando a internet voltar."));
+  }
+  return fetch(input, { ...init, headers }).then((response) => {
+    if (typeof window !== "undefined") window.dispatchEvent(new Event("online"));
+    return response;
+  }).catch((reason) => {
+    if (typeof window !== "undefined" && (typeof navigator === "undefined" || !navigator.onLine || reason instanceof TypeError)) {
+      window.dispatchEvent(new Event("offline"));
+    }
+    throw reason;
+  });
 }
 
 async function parseResponse(response: Response): Promise<Record<string, unknown>> {
@@ -91,10 +123,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
       } else {
         const body = (await response.json()) as { user: AuthUser };
+        storeUser(body.user, Boolean(window.localStorage.getItem(TOKEN_KEY)));
         setUser(body.user);
       }
     } catch {
-      setUser(null);
+      const storedUser = getStoredUser();
+      if (storedUser) setUser(storedUser);
+      else setUser(null);
     } finally {
       setIsLoading(false);
     }
@@ -112,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     const body = await parseResponse(response) as { token: string; user: AuthUser };
     storeToken(body.token, rememberMe);
+    storeUser(body.user, rememberMe);
     setUser(body.user);
   }, []);
 

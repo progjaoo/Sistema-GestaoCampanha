@@ -1,13 +1,15 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ChevronLeft, ChevronRight, Filter, Plus, Search, X } from 'lucide-react';
 import { Link } from 'wouter';
 import { useCreateLeadership, useListCities, useListFederalDeputies, useListLeaderships } from '@workspace/api-client-react';
 import { useAuth } from '@/lib/auth';
+import { useOfflineSnapshot } from '@/lib/connectivity';
 import { EmptyState, ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from '@/components/ops-shell';
 import { CreateLeaderAccountDialog } from '@/components/create-leader-account-dialog';
+import { HorizontalScrollHint, StickyFormActions } from '@/components/mobile-form';
 
 export default function LeadershipsPage() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [search, setSearch] = useState('');
   const [cityId, setCityId] = useState<number | undefined>();
   const [federalDeputyId, setFederalDeputyId] = useState<number | undefined>();
@@ -30,9 +32,21 @@ export default function LeadershipsPage() {
   const cities = useListCities();
   const deputies = useListFederalDeputies();
   const create = useCreateLeadership();
-  const records = query.data?.items ?? [];
-  const total = query.data?.total ?? 0;
+  const snapshot = useOfflineSnapshot<typeof query.data>('leaderships', { userId: user?.id ?? null, search, cityId: cityId ?? null, federalDeputyId: federalDeputyId ?? null, reviewOnly, sortBy, page });
+  const cached = snapshot.data;
+  const records = query.data?.items ?? cached?.items ?? [];
+  const total = query.data?.total ?? cached?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / (query.data?.pageSize ?? 12)));
+
+  useEffect(() => {
+    if (query.data) snapshot.saveSnapshot(query.data);
+  }, [query.data, snapshot.saveSnapshot]);
+
+  useEffect(() => {
+    if (can('leaderships:create') && new URLSearchParams(window.location.search).get('create') === '1') {
+      setShowCreate(true);
+    }
+  }, [can]);
 
   const submitCreate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -72,9 +86,11 @@ export default function LeadershipsPage() {
       eyebrow="Cadastro único / pessoas"
       title="Cadastro único de pessoas"
       description="Nome, contato, papel e localidade ficam relacionados sem repetir a pessoa nas visões de território e apoio."
+      lastUpdatedAt={snapshot.savedAt}
+      stale={Boolean(cached && !query.data)}
       action={<div className="flex flex-wrap gap-2">{can('leader-users:create') && <button onClick={() => setShowLeaderAccount(true)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/25 bg-primary/5 px-4 py-3 text-xs font-extrabold text-primary transition-transform hover:-translate-y-0.5" data-testid="button-create-leader-user"><Plus size={15} /> Acesso de líder</button>}{can('leaderships:create') && <button onClick={() => setShowCreate(true)} className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-3 text-xs font-extrabold text-primary-foreground shadow-sm transition-transform hover:-translate-y-0.5" data-testid="button-create-leadership"><Plus size={15} /> Nova pessoa</button>}</div>}
     />
-    <div className="mb-5 rounded-2xl border border-border bg-card p-3 shadow-[0_8px_30px_hsl(193_30%_15%_/.03)] sm:p-4">
+    <div className="sticky top-[72px] z-20 mb-5 rounded-2xl border border-border bg-card p-3 shadow-[0_8px_30px_hsl(193_30%_15%_/.03)] sm:p-4">
       <div className="flex flex-col gap-3 lg:flex-row">
         <div className="relative min-w-0 flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -98,12 +114,13 @@ export default function LeadershipsPage() {
         {(search || cityId || federalDeputyId || reviewOnly || sortBy !== 'name') && <button onClick={clearFilters} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-xs font-bold text-muted-foreground hover:text-foreground" data-testid="button-clear-filters"><X size={14} /> Limpar</button>}
       </div>
     </div>
-    {query.isLoading ? <LoadingRows /> : query.isError ? <ErrorState onRetry={() => void query.refetch()} /> : <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_30px_hsl(193_30%_15%_/.03)]" data-testid="leadership-table-section">
+    {query.isLoading && !cached ? <LoadingRows /> : query.isError && !cached ? <ErrorState onRetry={() => void query.refetch()} /> : <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-[0_8px_30px_hsl(193_30%_15%_/.03)]" data-testid="leadership-table-section">
       <div className="flex items-center justify-between border-b border-border px-5 py-4">
         <div><span className="text-sm font-extrabold">Pessoas encontradas</span><span className="ml-2 font-mono text-xs text-muted-foreground">{total.toLocaleString('pt-BR')}</span></div>
         <span className="mono-label text-muted-foreground">Página {page} / {pages}</span>
       </div>
-      <div className="hidden overflow-x-auto md:block">
+      <div className="hidden md:block">
+      <HorizontalScrollHint>
         <table className="w-full min-w-[760px] text-left">
           <thead className="bg-muted/45">
             <tr className="border-b border-border">
@@ -121,6 +138,7 @@ export default function LeadershipsPage() {
             </tr>)}
           </tbody>
         </table>
+      </HorizontalScrollHint>
       </div>
       <div className="divide-y divide-border md:hidden">
         {records.map((record) => <Link href={`/liderancas/${record.id}`} key={record.id} className="block px-5 py-4 transition-colors hover:bg-muted/35" data-testid={`mobile-row-leadership-${record.id}`}>
