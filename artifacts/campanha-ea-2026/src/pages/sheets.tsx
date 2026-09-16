@@ -194,7 +194,7 @@ export default function SheetsPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 p-3 sm:p-4">
         <div><p className="text-sm font-extrabold">Aba: {data?.selectedTab ?? "—"}</p><p className="mt-0.5 text-[11px] text-muted-foreground">{data?.totalRows ?? 0} linhas carregadas · somente leitura</p></div>
       </div>
-      <HorizontalScrollHint className="flex-1 overflow-auto bg-background scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+      <HorizontalScrollHint wrapperClassName="min-h-0 flex-1" className="h-full bg-background scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
         <table className="min-w-max border-collapse text-left text-xs">
           <thead className="sticky top-0 z-10 bg-[#f8f9fa] shadow-[0_1px_0_hsl(var(--border))] dark:bg-[#1a1d1e]">
             <tr>

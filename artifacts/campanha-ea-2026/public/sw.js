@@ -1,4 +1,4 @@
-const CACHE_NAME = "ea2026-shell-v1";
+const CACHE_NAME = "ea2026-shell-v2";
 const scopeUrl = new URL("./", self.registration.scope);
 const indexUrl = new URL("index.html", scopeUrl).toString();
 

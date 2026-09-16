@@ -10,7 +10,7 @@ export function StickyFormActions({ children }: { children: ReactNode }) {
   return <div className="sticky bottom-0 z-20 -mx-6 mt-6 border-t border-border bg-card/95 px-6 pb-[env(safe-area-inset-bottom)] pt-4 backdrop-blur-sm">{children}</div>;
 }
 
-export function HorizontalScrollHint({ children, label = "Deslize para ver mais", className = "" }: { children: ReactNode; label?: string; className?: string }) {
+export function HorizontalScrollHint({ children, label = "Deslize para ver mais", className = "", wrapperClassName = "" }: { children: ReactNode; label?: string; className?: string; wrapperClassName?: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hasOverflow, setHasOverflow] = useState(false);
 
@@ -28,8 +28,8 @@ export function HorizontalScrollHint({ children, label = "Deslize para ver mais"
     };
   }, []);
 
-  return <div className="relative">
-    <div ref={scrollRef} className={`overflow-x-auto ${className}`}>{children}</div>
+  return <div className={`relative min-h-0 ${wrapperClassName}`}>
+    <div ref={scrollRef} className={`min-h-0 overflow-auto ${className}`}>{children}</div>
     {hasOverflow && <div className="pointer-events-none absolute bottom-2 right-2 flex items-center gap-1 rounded-full border border-border bg-card/95 px-2.5 py-1 text-[10px] font-extrabold text-muted-foreground shadow-sm sm:hidden"><span>{label}</span><ChevronRight size={12} /></div>}
   </div>;
 }

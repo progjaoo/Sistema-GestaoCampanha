@@ -99,9 +99,19 @@ export function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
 async function parseResponse(response: Response): Promise<Record<string, unknown>> {
   const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
+    if (response.status === 401) throw new Error("E-mail ou senha incorretos. Confira os dados e tente novamente.");
+    if (response.status === 403) throw new Error("Seu acesso está bloqueado ou não está autorizado.");
+    if (response.status === 429) throw new Error("Muitas tentativas de acesso. Aguarde um pouco e tente novamente.");
     throw new Error(typeof body.error === "string" ? body.error : "Não foi possível concluir a operação.");
   }
   return body;
+}
+
+function networkError(reason: unknown, fallback: string) {
+  if (reason instanceof TypeError || (reason instanceof Error && /failed to fetch|network|fetch/i.test(reason.message))) {
+    return new Error("Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.");
+  }
+  return reason instanceof Error ? reason : new Error(fallback);
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -140,11 +150,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadCurrentUser]);
 
   const login = useCallback(async (email: string, password: string, rememberMe: boolean) => {
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, rememberMe }),
-    });
+    let response: Response;
+    try {
+      response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, rememberMe }),
+      });
+    } catch (reason) {
+      throw networkError(reason, "Não foi possível entrar.");
+    }
     const body = await parseResponse(response) as { token: string; user: AuthUser };
     storeToken(body.token, rememberMe);
     storeUser(body.user, rememberMe);
