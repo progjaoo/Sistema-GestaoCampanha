@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { ArrowRight, LockKeyhole } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, LockKeyhole } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import backgroundImage from "@assets/fundodegrade_1789097457989.png";
 import campaignLogo from "@assets/0_logoherosection_1789143523143.png";
@@ -8,6 +8,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,7 +41,7 @@ export default function LoginPage() {
           <div className="max-w-md"><p className="mono-label text-[#013F71]">Acesso da equipe</p><h2 className="mt-2 text-3xl font-extrabold tracking-[-.04em]">Entrar no sistema</h2><p className="mt-3 text-sm leading-6 text-slate-600">Use seu e-mail e senha para acessar a visão autorizada para você.</p></div>
           <form onSubmit={submit} className="mt-9 max-w-md space-y-5">
             <label className="block"><span className="mb-2 block text-xs font-extrabold">E-mail</span><input type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:ring-2 focus:ring-[#013F71]" placeholder="voce@campanha.com" data-testid="input-login-email" /></label>
-            <label className="block"><span className="mb-2 block text-xs font-extrabold">Senha</span><div className="relative"><LockKeyhole size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm outline-none transition focus:ring-2 focus:ring-[#013F71]" placeholder="Digite sua senha" data-testid="input-login-password" /></div></label>
+             <label className="block"><span className="mb-2 block text-xs font-extrabold">Senha</span><div className="relative"><LockKeyhole size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type={showPassword ? "text" : "password"} required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-12 text-sm outline-none transition focus:ring-2 focus:ring-[#013F71]" placeholder="Digite sua senha" data-testid="input-login-password" /><button type="button" onClick={() => setShowPassword((current) => !current)} className="absolute right-1 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-[#013F71] focus:outline-none focus:ring-2 focus:ring-[#013F71]" aria-label={showPassword ? "Ocultar senha" : "Exibir senha"} title={showPassword ? "Ocultar senha" : "Exibir senha"} aria-pressed={showPassword} data-testid="button-toggle-password-visibility">{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>
              <label className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 px-3 text-xs font-extrabold text-[#013968]">
                <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} className="h-4 w-4 shrink-0 accent-[#013F71]" data-testid="checkbox-remember-me" />
                <span>Mantenha-me Conectado</span>
