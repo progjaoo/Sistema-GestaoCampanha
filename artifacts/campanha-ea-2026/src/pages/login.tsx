@@ -8,6 +8,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -16,7 +17,7 @@ export default function LoginPage() {
     setError("");
     setIsSubmitting(true);
     try {
-      await login(email, password);
+      await login(email, password, rememberMe);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível entrar.");
     } finally {
@@ -40,6 +41,10 @@ export default function LoginPage() {
           <form onSubmit={submit} className="mt-9 max-w-md space-y-5">
             <label className="block"><span className="mb-2 block text-xs font-extrabold">E-mail</span><input type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:ring-2 focus:ring-[#013F71]" placeholder="voce@campanha.com" data-testid="input-login-email" /></label>
             <label className="block"><span className="mb-2 block text-xs font-extrabold">Senha</span><div className="relative"><LockKeyhole size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm outline-none transition focus:ring-2 focus:ring-[#013F71]" placeholder="Digite sua senha" data-testid="input-login-password" /></div></label>
+             <label className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 px-3 text-xs font-extrabold text-[#013968]">
+               <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} className="h-4 w-4 shrink-0 accent-[#013F71]" data-testid="checkbox-remember-me" />
+               <span>Mantenha-me Conectado</span>
+             </label>
             {error && <p className="rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-xs font-bold text-destructive" role="alert" data-testid="login-error">{error}</p>}
             <button type="submit" disabled={isSubmitting} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#013F71] text-sm font-extrabold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-60" data-testid="button-login-submit">{isSubmitting ? "Entrando…" : "Entrar"} {!isSubmitting && <ArrowRight size={16} />}</button>
           </form>

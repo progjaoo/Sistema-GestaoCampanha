@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, FileSpreadsheet, RefreshCw, Search, X } from "lucide-react";
 import { authFetch, useAuth } from "@/lib/auth";
 import { ErrorState, LoadingRows, OpsShell, PageHeading } from "@/components/ops-shell";
@@ -40,6 +40,7 @@ export default function SheetsPage() {
   const [data, setData] = useState<SheetData | null>(null);
   const [tab, setTab] = useState("");
   const [tabQuery, setTabQuery] = useState("");
+  const searchSelectionTimeoutRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -68,6 +69,32 @@ export default function SheetsPage() {
     void load(item);
   }
 
+  function handleTabQueryChange(value: string) {
+    setTabQuery(value);
+    if (searchSelectionTimeoutRef.current !== null) {
+      window.clearTimeout(searchSelectionTimeoutRef.current);
+      searchSelectionTimeoutRef.current = null;
+    }
+
+    const normalizedQuery = normalizeSearch(value.trim());
+    if (!data?.tabs.length || normalizedQuery.length < 2) return;
+    const matches = data.tabs.filter((item) => normalizeSearch(item).includes(normalizedQuery));
+    const exactMatch = matches.find((item) => normalizeSearch(item) === normalizedQuery);
+    const nextTab = exactMatch ?? (matches.length === 1 ? matches[0] : null);
+    if (!nextTab || nextTab === data.selectedTab) return;
+
+    searchSelectionTimeoutRef.current = window.setTimeout(() => {
+      selectTab(nextTab);
+      searchSelectionTimeoutRef.current = null;
+    }, 250);
+  }
+
+  useEffect(() => () => {
+    if (searchSelectionTimeoutRef.current !== null) {
+      window.clearTimeout(searchSelectionTimeoutRef.current);
+    }
+  }, []);
+
   if (!can("sheets:view")) return <OpsShell><PageHeading eyebrow="Integrações" title="Planilha da campanha" description="Seu perfil não possui permissão para consultar a fonte oficial." /></OpsShell>;
   if (loading && !data) return <OpsShell><PageHeading eyebrow="Integrações / Google Sheets" title="Planilha da campanha" description="Consulta somente leitura da Campanha_EA_2026_REV-006." /><LoadingRows count={5} /></OpsShell>;
   if (error && !data) return <OpsShell><PageHeading eyebrow="Integrações / Google Sheets" title="Planilha da campanha" description="Consulta somente leitura da Campanha_EA_2026_REV-006." /><ErrorState label={error} onRetry={() => void load()} /></OpsShell>;
@@ -90,7 +117,7 @@ export default function SheetsPage() {
             id="sheet-tab-search"
             type="search"
             value={tabQuery}
-            onChange={(event) => setTabQuery(event.target.value)}
+            onChange={(event) => handleTabQueryChange(event.target.value)}
             placeholder="Buscar aba pelo nome..."
             autoComplete="off"
             className="h-11 w-full rounded-lg border border-input bg-background pl-9 pr-10 text-sm font-bold text-foreground outline-none transition-shadow placeholder:text-muted-foreground/75 focus:ring-2 focus:ring-ring/25"

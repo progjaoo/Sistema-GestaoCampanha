@@ -669,6 +669,9 @@ components:
         password:
           type: string
           minLength: 1
+        rememberMe:
+          type: boolean
+          default: false
       required: [email, password]
     AuthUser:
       type: object

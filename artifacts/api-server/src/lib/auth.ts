@@ -19,7 +19,8 @@ import {
 import { logger } from "./logger";
 
 const scrypt = promisify(nodeScrypt);
-const TOKEN_TTL_SECONDS = 60 * 60 * 8;
+const SESSION_TOKEN_TTL_SECONDS = 60 * 60 * 8;
+const REMEMBERED_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 export const ROLE_DEFINITIONS: Array<{
   key: AuthRole;
@@ -325,15 +326,18 @@ export async function verifyPassword(
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
-export function signAccessToken(user: AuthUser): string {
+export function signAccessToken(user: AuthUser, options: { rememberMe?: boolean } = {}): string {
   const header = base64Url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const issuedAt = Math.floor(Date.now() / 1000);
+  const ttlSeconds = options.rememberMe
+    ? REMEMBERED_TOKEN_TTL_SECONDS
+    : SESSION_TOKEN_TTL_SECONDS;
   const payload = base64Url(
     JSON.stringify({
       sub: String(user.id),
       role: user.role,
       iat: issuedAt,
-      exp: issuedAt + TOKEN_TTL_SECONDS,
+      exp: issuedAt + ttlSeconds,
     }),
   );
   const unsigned = `${header}.${payload}`;

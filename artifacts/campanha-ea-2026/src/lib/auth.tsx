@@ -11,6 +11,22 @@ import { setAuthTokenGetter } from "@workspace/api-client-react";
 
 const TOKEN_KEY = "ea2026_access_token";
 
+function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(TOKEN_KEY) ?? window.sessionStorage.getItem(TOKEN_KEY);
+}
+
+function storeToken(token: string, rememberMe: boolean) {
+  window.localStorage.removeItem(TOKEN_KEY);
+  window.sessionStorage.removeItem(TOKEN_KEY);
+  (rememberMe ? window.localStorage : window.sessionStorage).setItem(TOKEN_KEY, token);
+}
+
+function removeStoredToken() {
+  window.localStorage.removeItem(TOKEN_KEY);
+  window.sessionStorage.removeItem(TOKEN_KEY);
+}
+
 export type AuthUser = {
   id: number;
   email: string;
@@ -29,7 +45,7 @@ type AuthContextValue = {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe: boolean) => Promise<void>;
   logout: () => Promise<void>;
   can: (permission: string) => boolean;
   updateUser: (user: AuthUser) => void;
@@ -38,11 +54,11 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 setAuthTokenGetter(() =>
-  typeof window === "undefined" ? null : window.localStorage.getItem(TOKEN_KEY),
+  getStoredToken(),
 );
 
 export function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
-  const token = typeof window === "undefined" ? null : window.localStorage.getItem(TOKEN_KEY);
+  const token = getStoredToken();
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   return fetch(input, { ...init, headers });
@@ -61,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const loadCurrentUser = useCallback(async () => {
-    const token = window.localStorage.getItem(TOKEN_KEY);
+    const token = getStoredToken();
     if (!token) {
       setIsLoading(false);
       return;
@@ -71,7 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {
-        window.localStorage.removeItem(TOKEN_KEY);
+        removeStoredToken();
         setUser(null);
       } else {
         const body = (await response.json()) as { user: AuthUser };
@@ -88,24 +104,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void loadCurrentUser();
   }, [loadCurrentUser]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, rememberMe: boolean) => {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, rememberMe }),
     });
     const body = await parseResponse(response) as { token: string; user: AuthUser };
-    window.localStorage.setItem(TOKEN_KEY, body.token);
+    storeToken(body.token, rememberMe);
     setUser(body.user);
   }, []);
 
   const logout = useCallback(async () => {
-    const token = window.localStorage.getItem(TOKEN_KEY);
+    const token = getStoredToken();
     await fetch("/api/auth/logout", {
       method: "POST",
       headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     }).catch(() => undefined);
-    window.localStorage.removeItem(TOKEN_KEY);
+    removeStoredToken();
     setUser(null);
   }, []);
 

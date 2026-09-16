@@ -21,11 +21,12 @@ export const HealthCheckResponse = zod.object({
  * @summary Authenticate with email and password
  */
 
-
+export const loginBodyRememberMeDefault = false;
 
 export const LoginBody = zod.object({
   "email": zod.string().email(),
-  "password": zod.string().min(1)
+  "password": zod.string().min(1),
+  "rememberMe": zod.boolean().default(loginBodyRememberMeDefault)
 })
 
 export const LoginResponse = zod.object({

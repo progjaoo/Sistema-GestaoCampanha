@@ -10,4 +10,5 @@ export interface AuthLogin {
   email: string;
   /** @minLength 1 */
   password: string;
+  rememberMe?: boolean;
 }

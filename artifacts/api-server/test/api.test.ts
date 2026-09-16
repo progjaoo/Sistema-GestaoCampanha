@@ -21,6 +21,7 @@ import {
 } from "@workspace/db";
 import {
   ensureAuthBootstrap,
+  hashPassword,
   signAccessToken,
 } from "../src/lib/auth";
 import { setGoogleCalendarRequestForTests } from "../src/lib/google-calendar";
@@ -43,6 +44,12 @@ const calendarCalls: Array<{ path: string; init?: { method?: string; body?: unkn
 
 function tokenFor(user: FixtureUser): string {
   return signAccessToken(user);
+}
+
+function tokenTimes(token: string): { iat: number; exp: number } {
+  const payload = token.split(".")[1];
+  assert.ok(payload);
+  return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { iat: number; exp: number };
 }
 
 async function request(
@@ -251,6 +258,27 @@ after(async () => {
 test("confirma RBAC, agenda, aviso, compartilhamento e escopo operacional", async () => {
   const [admin, articulator, coordinator, leader, outsider] = fixtureUsers;
   assert.ok(admin && articulator && coordinator && leader && outsider);
+
+  const loginUser = await createFixtureUser({
+    passwordHash: await hashPassword("senha-de-teste-123"),
+  });
+  const login = async (rememberMe: boolean) => {
+    const response = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: loginUser.email,
+        password: "senha-de-teste-123",
+        rememberMe,
+      }),
+    });
+    assert.equal(response.status, 200);
+    return await response.json() as { token: string };
+  };
+  const regularToken = tokenTimes((await login(false)).token);
+  const rememberedToken = tokenTimes((await login(true)).token);
+  assert.equal(regularToken.exp - regularToken.iat, 60 * 60 * 8);
+  assert.equal(rememberedToken.exp - rememberedToken.iat, 60 * 60 * 24 * 30);
 
   const regionResponse = await request("/api/regions", articulator);
   assert.equal(regionResponse.status, 200);

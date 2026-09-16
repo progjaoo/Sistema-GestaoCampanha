@@ -68,9 +68,13 @@ function optionalNumber(value: unknown): number | null | undefined {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function parseLoginBody(value: unknown): { email: string; password: string } | null {
+function parseLoginBody(value: unknown): { email: string; password: string; rememberMe: boolean } | null {
   if (!isRecord(value) || !isEmail(value.email) || typeof value.password !== "string" || !value.password) return null;
-  return { email: value.email, password: value.password };
+  return {
+    email: value.email,
+    password: value.password,
+    rememberMe: value.rememberMe === true,
+  };
 }
 
 function parseCreateUserBody(value: unknown): CreateUserInput | null {
@@ -156,7 +160,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const currentUser = updatedUser ?? user;
   const permissions = await getPermissionsForRole(currentUser.role);
   res.json({
-    token: signAccessToken(currentUser),
+    token: signAccessToken(currentUser, { rememberMe: parsed.rememberMe }),
     user: publicUser(currentUser, permissions),
   });
 });
