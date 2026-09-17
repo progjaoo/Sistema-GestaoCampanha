@@ -28,9 +28,11 @@ import type {
   AuthUserInput,
   AuthUserUpdate,
   CampaignOverview,
+  CampaignSpreadsheet,
   City,
   Error,
   FederalDeputy,
+  GetCampaignSpreadsheetParams,
   GetCurrentUser200,
   HealthStatus,
   Leadership,
@@ -1614,6 +1616,91 @@ export function useListReviewIssues<TData = Awaited<ReturnType<typeof listReview
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListReviewIssuesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetCampaignSpreadsheetUrl = (params?: GetCampaignSpreadsheetParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sheets/campaign?${stringifiedParams}` : `/api/sheets/campaign`
+}
+
+/**
+ * Returns spreadsheet metadata and values without write access.
+ * @summary Read the official campaign spreadsheet
+ */
+export const getCampaignSpreadsheet = async (params?: GetCampaignSpreadsheetParams, options?: Parameters<typeof customFetch>[1]): Promise<CampaignSpreadsheet> => {
+
+  return customFetch<CampaignSpreadsheet>(getGetCampaignSpreadsheetUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCampaignSpreadsheetQueryKey = (params?: GetCampaignSpreadsheetParams,) => {
+    return [
+    `/api/sheets/campaign`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCampaignSpreadsheetQueryOptions = <TData = Awaited<ReturnType<typeof getCampaignSpreadsheet>>, TError = ErrorType<Error>>(params?: GetCampaignSpreadsheetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCampaignSpreadsheet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCampaignSpreadsheetQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCampaignSpreadsheet>>> = ({ signal }) => getCampaignSpreadsheet(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCampaignSpreadsheet>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCampaignSpreadsheetQueryResult = NonNullable<Awaited<ReturnType<typeof getCampaignSpreadsheet>>>
+export type GetCampaignSpreadsheetQueryError = ErrorType<Error>
+
+
+/**
+ * @summary Read the official campaign spreadsheet
+ */
+
+export function useGetCampaignSpreadsheet<TData = Awaited<ReturnType<typeof getCampaignSpreadsheet>>, TError = ErrorType<Error>>(
+ params?: GetCampaignSpreadsheetParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCampaignSpreadsheet>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCampaignSpreadsheetQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
