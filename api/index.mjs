@@ -1,4 +1,4 @@
-import app, { ensureAuthBootstrap, logger } from "../artifacts/api-server/dist/vercel.mjs";
+import app, { ensureAuthBootstrap } from "../artifacts/api-server/dist/vercel.mjs";
 
 let bootstrapPromise = null;
 
@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     app(req, res);
   } catch (error) {
     bootstrapPromise = null;
-    logger.error({ err: error }, "Falha ao inicializar o banco no Vercel");
+    console.error("Falha ao inicializar o banco no Vercel", error);
     if (!res.headersSent) {
       res.status(503).json({ error: "Serviço temporariamente indisponível." });
     }
