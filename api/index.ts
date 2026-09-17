@@ -2,8 +2,15 @@ import app from "../artifacts/api-server/src/app";
 import { ensureAuthBootstrap } from "../artifacts/api-server/src/lib/auth";
 import { logger } from "../artifacts/api-server/src/lib/logger";
 
-type AppRequest = Parameters<typeof app>[0];
-type AppResponse = Parameters<typeof app>[1];
+type AppRequest = unknown;
+type AppResponse = {
+  headersSent: boolean;
+  status: (code: number) => AppResponse;
+  json: (body: unknown) => void;
+};
+type ExpressHandler = (req: AppRequest, res: AppResponse) => void;
+
+const expressHandler = app as unknown as ExpressHandler;
 
 let bootstrapPromise: Promise<void> | null = null;
 
@@ -14,7 +21,7 @@ export default async function handler(
   try {
     bootstrapPromise ??= ensureAuthBootstrap();
     await bootstrapPromise;
-    app(req, res);
+    expressHandler(req, res);
   } catch (error) {
     bootstrapPromise = null;
     logger.error({ err: error }, "Falha ao inicializar o banco no Vercel");
