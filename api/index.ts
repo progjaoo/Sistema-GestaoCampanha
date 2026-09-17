@@ -1,4 +1,6 @@
 type AppRequest = unknown;
+declare const process: { cwd: () => string };
+
 type AppResponse = {
   headersSent: boolean;
   status: (code: number) => AppResponse;
@@ -11,10 +13,7 @@ type ServerModule = {
   ensureAuthBootstrap: () => Promise<void>;
 };
 
-const serverModuleUrl = new URL(
-  "../artifacts/api-server/dist/vercel.mjs",
-  import.meta.url,
-).href;
+const serverModulePath = `${process.cwd()}/artifacts/api-server/dist/vercel.mjs`;
 
 let serverModulePromise: Promise<ServerModule> | null = null;
 
@@ -25,7 +24,7 @@ export default async function handler(
   res: AppResponse,
 ): Promise<void> {
   try {
-    serverModulePromise ??= import(serverModuleUrl) as Promise<ServerModule>;
+    serverModulePromise ??= import(serverModulePath) as Promise<ServerModule>;
     const { default: expressHandler, ensureAuthBootstrap } =
       await serverModulePromise;
     bootstrapPromise ??= ensureAuthBootstrap();
@@ -33,7 +32,6 @@ export default async function handler(
     expressHandler(req, res);
   } catch (error) {
     bootstrapPromise = null;
-    console.error("Falha ao inicializar o banco no Vercel", error);
     if (!res.headersSent) {
       res.status(503).json({ error: "Serviço temporariamente indisponível." });
     }
