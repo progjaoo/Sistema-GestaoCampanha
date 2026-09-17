@@ -8,34 +8,50 @@ ID: `1kiOXmyCeTEWqZLhWQFfCXP8khl3F-72TNPHWlub00BI`.
 
 A tela “Planilha” usa `GET /api/sheets/campaign`, permite escolher abas e mostra dados e correspondências com o Neon. A integração não altera células, abas, fórmulas ou permissões.
 
-## Por que não usar o plugin no deploy
+## Autenticação por ambiente
 
-O plugin/connector de Google Sheets disponível no ambiente de desenvolvimento está desabilitado pelo administrador. Além disso, um plugin de sessão do assistente não é uma credencial disponível para uma Function Vercel. Por isso, o runtime publicado usa a Google Sheets API nativa com conta de serviço e o escopo `spreadsheets.readonly`.
+O leitor suporta duas formas de acesso no servidor:
 
-## Configuração no Google Cloud
+1. **Planilha com acesso público por link:** configure `GOOGLE_SHEETS_API_KEY`, usando uma chave do Google Cloud restrita à Google Sheets API. A chave identifica o projeto que consome a API; o acesso à planilha continua dependendo das permissões de visualização definidas nela.
+2. **Planilha privada:** configure `GOOGLE_SERVICE_ACCOUNT_JSON` e compartilhe a planilha com o `client_email` da conta de serviço como **Visualizador**.
 
-1. Crie ou selecione um projeto no Google Cloud.
-2. Ative a Google Sheets API.
-3. Crie uma service account.
-4. Gere uma chave JSON uma única vez e guarde-a em local seguro.
-5. Compartilhe a planilha com o `client_email` da service account como **Visualizador**.
-6. Cadastre o conteúdo JSON em `GOOGLE_SERVICE_ACCOUNT_JSON` no Vercel como segredo.
-7. Cadastre a URL em `GOOGLE_SHEETS_SPREADSHEET_URL`.
+Em desenvolvimento, se nenhuma dessas credenciais estiver configurada, o projeto usa `@replit/connectors-sdk` no Replit. O conector de sessão do Replit não é uma credencial automaticamente disponível numa Function da Vercel.
 
-Não cole a chave JSON em issues, commits, documentação ou mensagens. Se uma chave for exposta, revogue-a no Google Cloud e gere outra.
+## Configurar chave da API para a planilha pública
+
+1. No Google Cloud Console, selecione ou crie um projeto e ative a Google Sheets API.
+2. Em **APIs e serviços → Credenciais**, crie uma chave de API.
+3. Edite a chave e restrinja **Restrições de API** à **Google Sheets API**. Não a deixe irrestrita.
+4. No projeto Vercel, adicione `GOOGLE_SHEETS_API_KEY` como variável sensível no ambiente **Production**. Não use prefixo `VITE_` nem exponha o valor ao frontend.
+5. Confirme que a planilha segue acessível com permissão de visualização para qualquer pessoa com o link e faça um novo deploy.
+
+A chave de API não concede permissão de escrita na planilha. O backend usa apenas requisições `GET`; não envie a chave em respostas ao navegador, logs, repositório ou documentação.
+
+## Configurar conta de serviço para planilha privada
+
+1. Crie ou selecione um projeto no Google Cloud e ative a Google Sheets API.
+2. Crie uma conta de serviço e gere uma chave JSON.
+3. Compartilhe a planilha com o `client_email` dessa conta como **Visualizador**.
+4. Cadastre o JSON inteiro em `GOOGLE_SERVICE_ACCOUNT_JSON` como variável sensível no ambiente Vercel desejado.
+
+Nunca comite a chave JSON. Se ela for exposta, revogue-a no Google Cloud e gere outra.
+
+## Configuração da planilha
+
+Configure `GOOGLE_SHEETS_SPREADSHEET_URL` com o link da planilha (ou `GOOGLE_SHEETS_SPREADSHEET_ID` com seu ID). O serviço valida a URL/ID antes de consultar a API.
 
 ## Comportamento técnico
 
-- A URL ou ID é validado antes da consulta.
-- O token OAuth é criado com JWT assinado pela chave privada e mantido em cache curto no processo da Function.
-- Todas as chamadas à API Sheets são `GET`.
+- A ordem de autenticação em produção é: conta de serviço, chave de API e, sem nenhuma das duas, erro claro de configuração.
+- Em desenvolvimento, se nenhuma credencial de servidor estiver definida, as chamadas seguem pelo conector Replit.
+- Todas as chamadas de leitura à API Sheets são `GET`.
 - Metadados são consultados antes dos valores para descobrir abas.
-- O nome da aba vem de query string apenas para seleção; não existe escrita dinâmica.
-- A API nunca retorna credenciais ao navegador.
+- O nome da aba selecionada é codificado antes de compor o caminho.
+- Credenciais são usadas apenas no backend e nunca retornadas ao navegador.
 
 ## Teste manual
 
-Depois de configurar banco, usuário e segredo Google:
+Depois de configurar a credencial adequada no Vercel:
 
 ```text
 GET /api/sheets/campaign
@@ -43,3 +59,4 @@ GET /api/sheets/campaign?tab=LIDERANCAS
 ```
 
 Confirme que a resposta contém `tabs`, `selectedTab`, `headers`, `rows` e `totalRows`, e que a planilha original permanece inalterada.
+
