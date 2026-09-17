@@ -487,6 +487,29 @@ export const ListReviewIssuesResponse = zod.array(ListReviewIssuesResponseItem)
 
 
 /**
+ * Returns spreadsheet metadata and values without write access.
+ * @summary Read the official campaign spreadsheet
+ */
+export const GetCampaignSpreadsheetQueryParams = zod.object({
+  "tab": zod.coerce.string().optional().describe('Optional tab name; defaults to the first tab.')
+})
+
+export const GetCampaignSpreadsheetResponse = zod.object({
+  "title": zod.string(),
+  "spreadsheetUrl": zod.string().nullable(),
+  "tabs": zod.array(zod.string()),
+  "selectedTab": zod.string().nullable(),
+  "headers": zod.array(zod.string()),
+  "rows": zod.array(zod.object({
+  "sourceRow": zod.number().int(),
+  "values": zod.array(zod.string())
+})),
+  "matches": zod.array(zod.number().int()),
+  "totalRows": zod.number().int().optional()
+})
+
+
+/**
  * @summary List active materials in the catalog
  */
 export const ListMaterialsResponseItem = zod.object({

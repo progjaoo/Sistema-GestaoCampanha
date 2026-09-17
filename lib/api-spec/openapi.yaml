@@ -22,6 +22,8 @@ tags:
     description: Import and data quality review
   - name: materials
     description: Material catalog and city withdrawals
+  - name: sheets
+    description: Read-only Google Sheets integration
 security:
   - BearerAuth: []
 paths:
@@ -372,6 +374,37 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ReviewIssue"
+  /sheets/campaign:
+    get:
+      operationId: getCampaignSpreadsheet
+      tags: [sheets]
+      summary: Read the official campaign spreadsheet
+      description: Returns spreadsheet metadata and values without write access.
+      parameters:
+        - in: query
+          name: tab
+          schema:
+            type: string
+          description: Optional tab name; defaults to the first tab.
+      responses:
+        "200":
+          description: Read-only spreadsheet data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignSpreadsheet"
+        "403":
+          description: Missing sheets:view permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Google Sheets is unavailable or not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /materials:
     get:
       operationId: listMaterials
@@ -579,6 +612,43 @@ components:
         error:
           type: string
       required: [error]
+    CampaignSpreadsheet:
+      type: object
+      properties:
+        title:
+          type: string
+        spreadsheetUrl:
+          type: [string, "null"]
+        tabs:
+          type: array
+          items:
+            type: string
+        selectedTab:
+          type: [string, "null"]
+        headers:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              sourceRow:
+                type: integer
+              values:
+                type: array
+                items:
+                  type: string
+            required: [sourceRow, values]
+        matches:
+          type: array
+          items:
+            type: integer
+        totalRows:
+          type: integer
+      required:
+        [title, spreadsheetUrl, tabs, selectedTab, headers, rows, matches]
     Material:
       type: object
       properties:
@@ -638,7 +708,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MaterialWithdrawalItem"
-      required: [id, cityId, cityName, regionName, responsibleUserId, responsibleName, status, postalCode, street, number, complement, neighborhood, addressCity, state, notes, createdAt, updatedAt]
+      required:
+        [
+          id,
+          cityId,
+          cityName,
+          regionName,
+          responsibleUserId,
+          responsibleName,
+          status,
+          postalCode,
+          street,
+          number,
+          complement,
+          neighborhood,
+          addressCity,
+          state,
+          notes,
+          createdAt,
+          updatedAt,
+        ]
     MaterialWithdrawalInput:
       type: object
       properties:
@@ -661,7 +750,18 @@ components:
               materialId: { type: integer, minimum: 1 }
               quantity: { type: ["integer", "null"], minimum: 1 }
             required: [materialId]
-      required: [cityId, responsibleUserId, postalCode, street, number, neighborhood, addressCity, state, items]
+      required:
+        [
+          cityId,
+          responsibleUserId,
+          postalCode,
+          street,
+          number,
+          neighborhood,
+          addressCity,
+          state,
+          items,
+        ]
     MaterialWithdrawalUpdate:
       allOf:
         - $ref: "#/components/schemas/MaterialWithdrawalInput"
@@ -707,7 +807,19 @@ components:
           type: array
           items:
             type: string
-      required: [id, email, fullName, role, regionId, cityId, leadershipId, isActive, canCreateLeaderUsers, permissions]
+      required:
+        [
+          id,
+          email,
+          fullName,
+          role,
+          regionId,
+          cityId,
+          leadershipId,
+          isActive,
+          canCreateLeaderUsers,
+          permissions,
+        ]
     AuthSession:
       type: object
       properties:
@@ -1036,5 +1148,14 @@ components:
           type: string
         sourceRow:
           type: integer
-      required: [id, leadershipId, type, severity, details, status, sourceSheet, sourceRow]
-
+      required:
+        [
+          id,
+          leadershipId,
+          type,
+          severity,
+          details,
+          status,
+          sourceSheet,
+          sourceRow,
+        ]

@@ -13,6 +13,24 @@ export interface Error {
   error: string;
 }
 
+export type CampaignSpreadsheetRowsItem = {
+  sourceRow: number;
+  values: string[];
+};
+
+export interface CampaignSpreadsheet {
+  title: string;
+  /** @nullable */
+  spreadsheetUrl: string | null;
+  tabs: string[];
+  /** @nullable */
+  selectedTab: string | null;
+  headers: string[];
+  rows: CampaignSpreadsheetRowsItem[];
+  matches: number[];
+  totalRows?: number;
+}
+
 export interface Material {
   id: number;
   name: string;
@@ -467,4 +485,11 @@ export const ListReviewIssuesStatus = {
   resolved: 'resolved',
   all: 'all',
 } as const;
+
+export type GetCampaignSpreadsheetParams = {
+/**
+ * Optional tab name; defaults to the first tab.
+ */
+tab?: string;
+};
 
