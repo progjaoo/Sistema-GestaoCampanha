@@ -1,7 +1,3 @@
-import app from "../artifacts/api-server/src/app";
-import { ensureAuthBootstrap } from "../artifacts/api-server/src/lib/auth";
-import { logger } from "../artifacts/api-server/src/lib/logger";
-
 type AppRequest = unknown;
 type AppResponse = {
   headersSent: boolean;
@@ -10,7 +6,17 @@ type AppResponse = {
 };
 type ExpressHandler = (req: AppRequest, res: AppResponse) => void;
 
-const expressHandler = app as unknown as ExpressHandler;
+type ServerModule = {
+  default: ExpressHandler;
+  ensureAuthBootstrap: () => Promise<void>;
+};
+
+const serverModuleUrl = new URL(
+  "../artifacts/api-server/dist/vercel.mjs",
+  import.meta.url,
+).href;
+
+let serverModulePromise: Promise<ServerModule> | null = null;
 
 let bootstrapPromise: Promise<void> | null = null;
 
@@ -19,12 +25,15 @@ export default async function handler(
   res: AppResponse,
 ): Promise<void> {
   try {
+    serverModulePromise ??= import(serverModuleUrl) as Promise<ServerModule>;
+    const { default: expressHandler, ensureAuthBootstrap } =
+      await serverModulePromise;
     bootstrapPromise ??= ensureAuthBootstrap();
     await bootstrapPromise;
     expressHandler(req, res);
   } catch (error) {
     bootstrapPromise = null;
-    logger.error({ err: error }, "Falha ao inicializar o banco no Vercel");
+    console.error("Falha ao inicializar o banco no Vercel", error);
     if (!res.headersSent) {
       res.status(503).json({ error: "Serviço temporariamente indisponível." });
     }
