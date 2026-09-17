@@ -3,6 +3,7 @@ import app, { ensureAuthBootstrap } from "../artifacts/api-server/dist/vercel.mj
 let bootstrapPromise = null;
 
 export default async function handler(req, res) {
+  const debug = new URL(req.url ?? "", "https://vercel.local").searchParams.get("debug") === "1";
   try {
     bootstrapPromise ??= ensureAuthBootstrap();
     await bootstrapPromise;
@@ -11,7 +12,11 @@ export default async function handler(req, res) {
     bootstrapPromise = null;
     console.error("Falha ao inicializar o banco no Vercel", error);
     if (!res.headersSent) {
-      res.status(503).json({ error: "Serviço temporariamente indisponível." });
+      const detail = error instanceof Error ? error.message : String(error);
+      res.status(503).json({
+        error: "Serviço temporariamente indisponível.",
+        ...(debug ? { detail: detail.slice(0, 500) } : {}),
+      });
     }
   }
 }
