@@ -7,8 +7,9 @@ export default async function handler(req, res) {
     bootstrapPromise ??= ensureAuthBootstrap();
     await bootstrapPromise;
     app(req, res);
-  } catch {
+  } catch (error) {
     bootstrapPromise = null;
+    console.error("Falha ao inicializar o banco no Vercel", error);
     if (!res.headersSent) {
       res.status(503).json({ error: "Serviço temporariamente indisponível." });
     }

@@ -13,6 +13,7 @@ const originalNodeEnv = process.env.NODE_ENV;
 const originalSpreadsheetUrl = process.env.GOOGLE_SHEETS_SPREADSHEET_URL;
 const originalSpreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 const originalServiceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+const originalGoogleSheetsApiKey = process.env.GOOGLE_SHEETS_API_KEY;
 
 function createServiceAccountJson(): string {
   const { privateKey } = generateKeyPairSync("rsa", {
@@ -33,6 +34,7 @@ afterEach(() => {
   process.env.GOOGLE_SHEETS_SPREADSHEET_URL = originalSpreadsheetUrl;
   process.env.GOOGLE_SHEETS_SPREADSHEET_ID = originalSpreadsheetId;
   process.env.GOOGLE_SERVICE_ACCOUNT_JSON = originalServiceAccount;
+  process.env.GOOGLE_SHEETS_API_KEY = originalGoogleSheetsApiKey;
   resetGoogleSheetsForTests();
 });
 
@@ -98,13 +100,45 @@ test("usa conta de serviço, obtém token OAuth e faz somente GET na API Sheets"
   );
 });
 
+test("usa API key server-side para ler uma planilha pública somente com GET", async () => {
+  const id = "1kiOXmyCeTEWqZLhWQFfCXP8khl3F-72TNPHWlub00BI";
+  process.env.NODE_ENV = "production";
+  process.env.GOOGLE_SHEETS_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${id}`;
+  process.env.GOOGLE_SHEETS_API_KEY = "test-sheets-api-key";
+  delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+
+  let requestedUrl: URL | null = null;
+  let requestedMethod = "";
+  globalThis.fetch = async (input, init) => {
+    requestedUrl = new URL(String(input));
+    requestedMethod = init?.method ?? "GET";
+    return Response.json({ ok: true });
+  };
+
+  const response = await googleSheetsRequest(
+    `/v4/spreadsheets/${id}?fields=properties.title,sheets.properties`,
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(requestedUrl?.origin, "https://sheets.googleapis.com");
+  assert.equal(requestedUrl?.pathname, `/v4/spreadsheets/${id}`);
+  assert.equal(
+    requestedUrl?.searchParams.get("fields"),
+    "properties.title,sheets.properties",
+  );
+  assert.equal(requestedUrl?.searchParams.get("key"), "test-sheets-api-key");
+  assert.equal(requestedMethod, "GET");
+});
+
 test("não usa o conector Replit em produção quando a conta de serviço está ausente", async () => {
   process.env.NODE_ENV = "production";
   process.env.GOOGLE_SHEETS_SPREADSHEET_ID = "spreadsheet-id";
   delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  delete process.env.GOOGLE_SHEETS_API_KEY;
 
   await assert.rejects(
     googleSheetsRequest("/v4/spreadsheets/spreadsheet-id"),
-    /GOOGLE_SERVICE_ACCOUNT_JSON/,
+    /GOOGLE_SHEETS_API_KEY.*GOOGLE_SERVICE_ACCOUNT_JSON/,
   );
 });
+

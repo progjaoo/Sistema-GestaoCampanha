@@ -161,13 +161,25 @@ async function nativeGoogleSheetsRequest(path: string): Promise<Response> {
   });
 }
 
+async function publicGoogleSheetsRequest(
+  path: string,
+  apiKey: string,
+): Promise<Response> {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const url = new URL(normalizedPath, GOOGLE_SHEETS_API_BASE_URL);
+  url.searchParams.set("key", apiKey);
+  return fetch(url, { method: "GET" });
+}
+
 export async function googleSheetsRequest(path: string): Promise<Response> {
   if (requestOverride) return requestOverride(path);
 
   if (getServiceAccount()) return nativeGoogleSheetsRequest(path);
+  const apiKey = process.env.GOOGLE_SHEETS_API_KEY?.trim();
+  if (apiKey) return publicGoogleSheetsRequest(path, apiKey);
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "GOOGLE_SERVICE_ACCOUNT_JSON deve ser configurado para ler o Google Sheets em produção",
+      "Configure GOOGLE_SHEETS_API_KEY para uma planilha pública ou GOOGLE_SERVICE_ACCOUNT_JSON para uma planilha restrita",
     );
   }
   return connectors.proxy("google-sheet", path, { method: "GET" });
@@ -183,3 +195,4 @@ export function resetGoogleSheetsForTests(): void {
   requestOverride = null;
   cachedAccessToken = null;
 }
+
