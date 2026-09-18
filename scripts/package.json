@@ -7,6 +7,7 @@
     "hello": "tsx ./src/hello.ts",
     "seed:campaign": "tsx ./src/seed-campaign.ts",
     "test:api": "tsx ../artifacts/api-server/test/api.test.ts",
+    "test:calendar-oauth": "tsx ../artifacts/api-server/test/google-calendar-oauth.test.ts",
     "test:sheets": "tsx ../artifacts/api-server/test/google-sheets.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

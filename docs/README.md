@@ -25,6 +25,7 @@ Este é o índice principal do projeto. A documentação descreve o estado atual
 - [API](api.md) — prefixos, autenticação, permissões e principais recursos.
 - [Testes](testing.md) — estratégia, comandos e interpretação dos resultados.
 - [Google Sheets](google-sheets.md) — planilha oficial, acesso somente leitura e configuração da conta de serviço.
+- [Google Calendar](google-calendar.md) — conexão OAuth server-side, credenciais protegidas e operação na Vercel.
 - [Banco no Neon](database-neon.md) — projeto, branch, schema, seed e operação segura.
 - [Deploy no Vercel](deploy-vercel.md) — conexão GitHub, variáveis, domínio e validação.
 - [Segurança](security.md) — segredos, autenticação, CORS e riscos conhecidos.

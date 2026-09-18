@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Check, Edit3, KeyRound, Plus, ShieldCheck, Trash2, UserRound, X } from "lucide-react";
+import { CalendarDays, Check, Edit3, ExternalLink, KeyRound, Plus, RefreshCw, ShieldCheck, Trash2, UserRound, X } from "lucide-react";
 import { useListLeaderships, useListCities, useListRegions } from "@workspace/api-client-react";
 import { authFetch, useAuth } from "@/lib/auth";
 import { ErrorState, LoadingRows, OpsShell, PageHeading, StatusPill } from "@/components/ops-shell";
@@ -37,6 +37,13 @@ type UserFormState = {
   leadershipId: string;
   isActive: boolean;
   canCreateLeaderUsers: boolean;
+};
+type GoogleCalendarStatus = {
+  configured: boolean;
+  missingConfiguration: string[];
+  status: "not_connected" | "connected" | "reauthorization_required";
+  connectedAt: string | null;
+  calendarId: string;
 };
 
 const roleOptions = [
@@ -112,6 +119,10 @@ export default function AccessControlPage() {
   const [dialogUser, setDialogUser] = useState<UserRow | null | undefined>(undefined);
   const [savingRole, setSavingRole] = useState(false);
   const [busyUserId, setBusyUserId] = useState<number | null>(null);
+  const [googleCalendarStatus, setGoogleCalendarStatus] = useState<GoogleCalendarStatus | null>(null);
+  const [googleCalendarLoading, setGoogleCalendarLoading] = useState(false);
+  const [googleCalendarConnecting, setGoogleCalendarConnecting] = useState(false);
+  const [googleCalendarError, setGoogleCalendarError] = useState("");
   const regions = useListRegions();
   const cities = useListCities();
   const regionRows = (regions.data ?? []) as Region[];
@@ -138,7 +149,52 @@ export default function AccessControlPage() {
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  async function loadGoogleCalendarStatus() {
+    setGoogleCalendarLoading(true);
+    setGoogleCalendarError("");
+    try {
+      const status = await readJson<GoogleCalendarStatus>(await authFetch("/api/calendar/google/status"));
+      setGoogleCalendarStatus(status);
+    } catch (reason) {
+      setGoogleCalendarError(reason instanceof Error ? reason.message : "Não foi possível consultar a conexão Google Calendar.");
+    } finally {
+      setGoogleCalendarLoading(false);
+    }
+  }
+
+  async function connectGoogleCalendar() {
+    setGoogleCalendarConnecting(true);
+    setGoogleCalendarError("");
+    try {
+      const result = await readJson<{ authorizationUrl: string }>(await authFetch("/api/calendar/google/connect", { method: "POST" }));
+      const authorizationUrl = new URL(result.authorizationUrl);
+      if (authorizationUrl.origin !== "https://accounts.google.com") {
+        throw new Error("O servidor retornou um destino OAuth inválido.");
+      }
+      window.location.assign(authorizationUrl.toString());
+    } catch (reason) {
+      setGoogleCalendarError(reason instanceof Error ? reason.message : "Não foi possível iniciar a conexão.");
+      setGoogleCalendarConnecting(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    if (can("rbac:manage")) void loadGoogleCalendarStatus();
+    const currentUrl = new URL(window.location.href);
+    const result = currentUrl.searchParams.get("googleCalendar");
+    if (result) {
+      if (result === "connected") {
+        toast({ title: "Google Calendar conectado", description: "A agenda já pode usar a conta autorizada." });
+      } else if (result === "cancelled") {
+        toast({ title: "Conexão cancelada", description: "Nenhuma alteração foi feita na conexão." });
+      } else {
+        toast({ title: "Não foi possível conectar", description: "Confira as configurações e tente autorizar novamente.", variant: "destructive" });
+      }
+      currentUrl.searchParams.delete("googleCalendar");
+      window.history.replaceState(null, "", `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`);
+    }
+  }, []);
 
   const activeRole = roles.find((role) => role.key === selectedRole);
   const groupedPermissions = useMemo(
@@ -278,6 +334,40 @@ export default function AccessControlPage() {
         </div>;
       })}</div>
     </section>
+    {can("rbac:manage") && <section className="mt-5 rounded-2xl border border-border bg-card p-5 sm:p-7" aria-labelledby="google-calendar-connection-title">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><CalendarDays size={19} /></span>
+          <div>
+            <p className="mono-label text-primary">Integração administrativa</p>
+            <h2 id="google-calendar-connection-title" className="mt-1 text-lg font-extrabold">Google Calendar</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">Conecte a conta institucional para que a Agenda use a API do Google diretamente pela Vercel. A credencial fica protegida no servidor e não é mostrada nesta tela.</p>
+          </div>
+        </div>
+        <button onClick={() => void loadGoogleCalendarStatus()} disabled={googleCalendarLoading || googleCalendarConnecting} className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border px-3 text-xs font-bold disabled:opacity-50"><RefreshCw size={13} className={googleCalendarLoading ? "animate-spin" : ""} /> Atualizar status</button>
+      </div>
+      <div className="mt-5 rounded-xl border border-border bg-background/60 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[.08em] ${googleCalendarStatus?.status === "connected" ? "bg-emerald-100 text-emerald-800" : googleCalendarStatus?.status === "reauthorization_required" ? "bg-amber-100 text-amber-900" : "bg-muted text-muted-foreground"}`}>
+            {googleCalendarLoading ? "Consultando…" : googleCalendarStatus?.status === "connected" ? "Conectado" : googleCalendarStatus?.status === "reauthorization_required" ? "Reconexão necessária" : "Não conectado"}
+          </span>
+          {googleCalendarStatus?.connectedAt && <span className="text-[11px] text-muted-foreground">Autorizado em {new Date(googleCalendarStatus.connectedAt).toLocaleString("pt-BR")}</span>}
+          {googleCalendarStatus && <span className="text-[11px] text-muted-foreground">Calendário: {googleCalendarStatus.calendarId}</span>}
+        </div>
+        {googleCalendarStatus && !googleCalendarStatus.configured && <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950" role="status">
+          Cadastre as variáveis secretas no Vercel antes de conectar: {googleCalendarStatus.missingConfiguration.join(", ")}.
+        </div>}
+        {googleCalendarStatus && <p className="mt-3 text-[11px] leading-5 text-muted-foreground">O app Google ainda está em External / Testing. Nessa fase, a autorização pode exigir reconexão após sete dias; conclua a publicação/verificação do app antes de depender dela continuamente.</p>}
+        {googleCalendarError && <p className="mt-3 rounded-lg bg-destructive/5 p-3 text-xs font-bold text-destructive" role="alert">{googleCalendarError}</p>}
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button onClick={() => void connectGoogleCalendar()} disabled={googleCalendarLoading || googleCalendarConnecting || !googleCalendarStatus?.configured} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-extrabold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50">
+            {googleCalendarConnecting ? <RefreshCw size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+            {googleCalendarConnecting ? "Abrindo autorização…" : googleCalendarStatus?.status === "connected" ? "Reautorizar conta" : "Conectar conta Google"}
+          </button>
+          <span className="text-[11px] text-muted-foreground">Permissão de agenda Google limitada ao escopo de eventos próprios.</span>
+        </div>
+      </div>
+    </section>}
     {dialogUser !== undefined && <UserFormDialog user={dialogUser} regions={regionRows} cities={cityRows} onClose={() => setDialogUser(undefined)} onSaved={(apiUser, form) => saveUser(apiUser, form, dialogUser ? "edit" : "create", dialogUser ?? undefined)} />}
   </OpsShell>;
 }

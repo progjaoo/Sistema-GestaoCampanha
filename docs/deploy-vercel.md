@@ -5,9 +5,9 @@
 O projeto usa `vercel.json` na raiz:
 
 - instalação com pnpm e lockfile;
-- build somente de `@workspace/campanha-ea-2026`;
+- build da API Express e de `@workspace/campanha-ea-2026`;
 - saída `artifacts/campanha-ea-2026/dist/public`;
-- `/api/*` direcionado para `api/index.ts`;
+- `/api/*` direcionado para `api/index.mjs`;
 - demais caminhos direcionados a `/index.html` para deep links do SPA;
 - Function Express com duração máxima configurada.
 
@@ -28,6 +28,11 @@ DATABASE_URL
 SESSION_SECRET
 GOOGLE_SHEETS_SPREADSHEET_URL
 GOOGLE_SERVICE_ACCOUNT_JSON
+GOOGLE_CALENDAR_CLIENT_ID
+GOOGLE_CALENDAR_CLIENT_SECRET
+GOOGLE_CALENDAR_REDIRECT_URI
+GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY
+GOOGLE_CALENDAR_ID (opcional; default primary)
 APP_ORIGIN
 ADMIN_GENERAL_EMAIL
 ADMIN_GENERAL_PASSWORD
@@ -48,5 +53,6 @@ Adicione `gestaocampanha15088.vercel.app` em Settings → Domains. O nome precis
 4. Abra a tela Planilha e valide abas/linhas.
 5. Verifique logs sem dados sensíveis.
 6. Confirme que o domínio e PWA usam HTTPS.
+7. Configure e autorize o Google Calendar conforme [Google Calendar](google-calendar.md); não declare operação contínua enquanto o app OAuth permanecer em External / Testing.
 
 Referências oficiais: [Express no Vercel](https://vercel.com/docs/frameworks/backend/express) e [Vite no Vercel](https://vercel.com/docs/frameworks/frontend/vite).

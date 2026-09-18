@@ -7,6 +7,7 @@ pnpm typecheck
 pnpm --filter @workspace/campanha-ea-2026 run build
 pnpm --filter @workspace/api-server run build
 pnpm --filter @workspace/scripts run test:sheets
+pnpm --filter @workspace/scripts run test:calendar-oauth
 pnpm --filter @workspace/scripts run test:api
 ```
 
@@ -21,6 +22,8 @@ O teste `artifacts/api-server/test/google-sheets.test.ts` cobre:
 - uso de `GET` para a API Sheets.
 
 O teste de API existente cobre autenticação, RBAC, agenda, avisos, tarefas e escopo operacional. Ele exige um banco preparado e dados seed.
+
+`test:calendar-oauth` valida cifra AES-256-GCM, detecção de adulteração, chave de 32 bytes, state e parâmetros do fluxo PKCE/escopo. O teste de API confirma que a conexão OAuth exige `rbac:manage` e que a sincronização percorre páginas. Os testes não chamam nem alteram uma agenda Google real.
 
 ## Falhas de ambiente
 

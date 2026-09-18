@@ -7,10 +7,10 @@ O sistema é uma aplicação Web + API em monorepo. O navegador baixa o frontend
 ```text
 Navegador/PWA
    ├─ Vite → arquivos estáticos no Vercel
-   └─ fetch /api/* → api/index.ts → Express
+   └─ fetch /api/* → api/index.mjs → Express
                                   ├─ Neon/PostgreSQL via Drizzle
                                   ├─ Google Sheets API (somente leitura)
-                                  └─ Google Calendar via conector/API configurado
+                                  └─ Google Calendar API via OAuth server-side
 ```
 
 ## Camadas
@@ -21,11 +21,15 @@ Navegador/PWA
 
 ### API
 
-`artifacts/api-server/src/app.ts` configura middleware e monta as rotas sob `/api`. `src/index.ts` continua sendo o processo local que chama `listen`; `api/index.ts` é o entrypoint serverless que apenas exporta a instância Express.
+`artifacts/api-server/src/app.ts` configura middleware e monta as rotas sob `/api`. `src/index.ts` continua sendo o processo local que chama `listen`; `api/index.mjs` é o entrypoint serverless que importa a instância Express compilada.
 
 ### Persistência
 
 `lib/db/src/schema` define as tabelas normalizadas. A conexão é criada a partir de `DATABASE_URL`. No Neon, use a URL pooled e mantenha migrations/schema e seed como operações explícitas.
+
+### Integrações Google
+
+Google Sheets é somente leitura e usa a credencial de serviço descrita em `docs/google-sheets.md`. Google Calendar usa OAuth próprio, callback Vercel e refresh token cifrado no Neon; a integração e operação estão em `docs/google-calendar.md`.
 
 ### Contratos
 
@@ -44,5 +48,5 @@ Navegador/PWA
 
 - Um projeto Vercel reduz CORS e mantém o contrato relativo `/api`.
 - O build Vercel é direcionado ao frontend, sem publicar o sandbox.
-- O Express é executado como uma Function; nenhum `app.listen()` deve ser usado pelo entrypoint Vercel.
+- O Express é executado como uma Function em `api/index.mjs`; nenhum `app.listen()` deve ser usado pelo entrypoint Vercel.
 - O fallback SPA ocorre depois da regra `/api`.

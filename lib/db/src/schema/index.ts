@@ -21,3 +21,4 @@ export * from "./campaign";
 export * from "./auth";
 export * from "./operations";
 export * from "./materials";
+export * from "./google-calendar";
