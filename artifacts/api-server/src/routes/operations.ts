@@ -26,7 +26,11 @@ import {
   regionsTable,
   articulatorsTable,
 } from "@workspace/db";
-import { googleCalendarRequest } from "../lib/google-calendar";
+import {
+  getGoogleCalendarId,
+  googleCalendarRequest,
+  GoogleCalendarOAuthError,
+} from "../lib/google-calendar";
 import { hasPermission, leadershipScopeCondition, cityScopeCondition } from "../lib/auth";
 import { requireAnyPermission, requirePermission } from "../middlewares/auth";
 
@@ -1471,6 +1475,7 @@ router.delete(
     const [event] = await db
       .select({
         id: campaignCalendarEventsTable.id,
+        googleCalendarId: campaignCalendarEventsTable.googleCalendarId,
         googleEventId: campaignCalendarEventsTable.googleEventId,
       })
       .from(campaignCalendarEventsTable)
@@ -1486,7 +1491,7 @@ router.delete(
     }
 
     const googleResponse = await googleCalendarRequest(
-      `/calendar/v3/calendars/primary/events/${encodeURIComponent(event.googleEventId)}?sendUpdates=all`,
+      `/calendar/v3/calendars/${encodeURIComponent(event.googleCalendarId)}/events/${encodeURIComponent(event.googleEventId)}?sendUpdates=all`,
       { method: "DELETE" },
     );
     if (!googleResponse.ok && googleResponse.status !== 404) {
@@ -1812,7 +1817,8 @@ router.post(
       res.status(403).json({ error: "O território está fora do seu escopo." });
       return;
     }
-    const googleResponse = await googleCalendarRequest("/calendar/v3/calendars/primary/events?sendUpdates=all", {
+    const googleCalendarId = getGoogleCalendarId();
+    const googleResponse = await googleCalendarRequest(`/calendar/v3/calendars/${encodeURIComponent(googleCalendarId)}/events?sendUpdates=all`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1831,7 +1837,7 @@ router.post(
     const googleEvent = await googleResponse.json() as { id: string; htmlLink?: string };
     const [created] = await db.insert(campaignCalendarEventsTable).values({
       source: "google",
-      googleCalendarId: "primary",
+      googleCalendarId,
       googleEventId: googleEvent.id,
       googleHtmlLink: googleEvent.htmlLink ?? null,
       title,
@@ -1874,14 +1880,7 @@ router.post(
     const timeMin = new Date();
     const timeMax = new Date();
     timeMax.setDate(timeMax.getDate() + 90);
-    const query = new URLSearchParams({
-      timeMin: timeMin.toISOString(),
-      timeMax: timeMax.toISOString(),
-      timeZone: "America/Sao_Paulo",
-      singleEvents: "true",
-      orderBy: "startTime",
-      maxResults: "250",
-    });
+    const googleCalendarId = getGoogleCalendarId();
     const visibleCities = await db
       .select({ id: citiesTable.id })
       .from(citiesTable)
@@ -1891,94 +1890,136 @@ router.post(
     let googleCancelled = 0;
     let notificationsPrepared = 0;
     const errors: string[] = [];
+    let pageToken: string | undefined;
+    let pageCount = 0;
+    let truncated = false;
+    const maxPages = 10;
 
     try {
-      const response = await googleCalendarRequest(`/calendar/v3/calendars/primary/events?${query.toString()}`);
-      if (!response.ok) throw new Error(`Google Calendar indisponível (${response.status}).`);
-      const payload = await response.json() as { items?: Array<Record<string, unknown>> };
-      for (const event of payload.items ?? []) {
-        if (typeof event.id !== "string") continue;
-        const privateProps = record(event.extendedProperties) && record(event.extendedProperties.private) ? event.extendedProperties.private : {};
-        const cityId = numberValue(privateProps.eaCityId);
-        const start = record(event.start) && typeof event.start.dateTime === "string" ? dateValue(event.start.dateTime) : null;
-        const end = record(event.end) && typeof event.end.dateTime === "string" ? dateValue(event.end.dateTime) : null;
-        if (!cityId || !visibleCityIds.has(cityId)) continue;
-        if (event.status === "cancelled") {
-          await db.update(campaignCalendarEventsTable).set({
-            status: "cancelled",
-            ...clearSyncError(),
-            updatedAt: new Date(),
-          }).where(and(
-            eq(campaignCalendarEventsTable.googleCalendarId, "primary"),
+      do {
+        const query = new URLSearchParams({
+          timeMin: timeMin.toISOString(),
+          timeMax: timeMax.toISOString(),
+          timeZone: "America/Sao_Paulo",
+          singleEvents: "true",
+          orderBy: "startTime",
+          maxResults: "250",
+        });
+        if (pageToken) query.set("pageToken", pageToken);
+        const response = await googleCalendarRequest(
+          `/calendar/v3/calendars/${encodeURIComponent(googleCalendarId)}/events?${query.toString()}`,
+        );
+        if (!response.ok) throw new Error("Google Calendar indisponível.");
+        const payload = await response.json() as {
+          items?: Array<Record<string, unknown>>;
+          nextPageToken?: string;
+        };
+        pageCount += 1;
+        for (const event of payload.items ?? []) {
+          if (typeof event.id !== "string") continue;
+          const privateProps = record(event.extendedProperties) && record(event.extendedProperties.private)
+            ? event.extendedProperties.private
+            : {};
+          const cityId = numberValue(privateProps.eaCityId);
+          const start = record(event.start) && typeof event.start.dateTime === "string"
+            ? dateValue(event.start.dateTime)
+            : null;
+          const end = record(event.end) && typeof event.end.dateTime === "string"
+            ? dateValue(event.end.dateTime)
+            : null;
+          if (!cityId || !visibleCityIds.has(cityId)) continue;
+          if (event.status === "cancelled") {
+            await db.update(campaignCalendarEventsTable).set({
+              status: "cancelled",
+              ...clearSyncError(),
+              updatedAt: new Date(),
+            }).where(and(
+              eq(campaignCalendarEventsTable.googleCalendarId, googleCalendarId),
+              eq(campaignCalendarEventsTable.googleEventId, event.id),
+            ));
+            googleCancelled += 1;
+            continue;
+          }
+          if (!start || !end || typeof event.summary !== "string") continue;
+          const [existing] = await db.select({
+            id: campaignCalendarEventsTable.id,
+          }).from(campaignCalendarEventsTable).where(and(
+            eq(campaignCalendarEventsTable.googleCalendarId, googleCalendarId),
             eq(campaignCalendarEventsTable.googleEventId, event.id),
-          ));
-          googleCancelled += 1;
-          continue;
-        }
-        if (!start || !end || typeof event.summary !== "string") continue;
-        const [existing] = await db.select({
-          id: campaignCalendarEventsTable.id,
-        }).from(campaignCalendarEventsTable).where(and(
-          eq(campaignCalendarEventsTable.googleCalendarId, "primary"),
-          eq(campaignCalendarEventsTable.googleEventId, event.id),
-        )).limit(1);
-        const [upserted] = await db.insert(campaignCalendarEventsTable).values({
-          source: "google",
-          googleCalendarId: "primary",
-          googleEventId: event.id,
-          googleHtmlLink: typeof event.htmlLink === "string" ? event.htmlLink : null,
-          title: event.summary,
-          description: typeof event.description === "string" ? event.description : null,
-          location: typeof event.location === "string" ? event.location : null,
-          startsAt: start,
-          endsAt: end,
-          cityId,
-          status: "pending",
-          ...clearSyncError(),
-          sourceUpdatedAt: dateValue(event.updated),
-          createdByUserId: req.auth!.user.id,
-        }).onConflictDoUpdate({
-          target: [campaignCalendarEventsTable.googleCalendarId, campaignCalendarEventsTable.googleEventId],
-          set: {
+          )).limit(1);
+          const [upserted] = await db.insert(campaignCalendarEventsTable).values({
             source: "google",
+            googleCalendarId,
+            googleEventId: event.id,
+            googleHtmlLink: typeof event.htmlLink === "string" ? event.htmlLink : null,
             title: event.summary,
             description: typeof event.description === "string" ? event.description : null,
             location: typeof event.location === "string" ? event.location : null,
             startsAt: start,
             endsAt: end,
+            cityId,
             status: "pending",
-            googleHtmlLink: typeof event.htmlLink === "string" ? event.htmlLink : null,
             ...clearSyncError(),
             sourceUpdatedAt: dateValue(event.updated),
-            updatedAt: new Date(),
-          },
-        }).returning();
-        if (!existing && upserted) {
-          const [eventCity] = await db.select({ name: citiesTable.name }).from(citiesTable).where(eq(citiesTable.id, cityId));
-          const { share } = await calendarShareForScope(calendarWeekStart(start), req.auth!, `Agenda de ${calendarWeekStart(start)}`);
-          const notification = await automaticCalendarNotification({
-            triggerType: "event_imported",
-            dedupeKey: `event_imported:${upserted.id}`,
-            share,
-            event: {
-              id: upserted.id,
-              title: upserted.title,
-              startsAt: upserted.startsAt,
-              endsAt: upserted.endsAt,
-              cityId: upserted.cityId,
-              cityName: eventCity?.name ?? "Cidade não informada",
-              location: upserted.location,
+            createdByUserId: req.auth!.user.id,
+          }).onConflictDoUpdate({
+            target: [campaignCalendarEventsTable.googleCalendarId, campaignCalendarEventsTable.googleEventId],
+            set: {
+              source: "google",
+              title: event.summary,
+              description: typeof event.description === "string" ? event.description : null,
+              location: typeof event.location === "string" ? event.location : null,
+              startsAt: start,
+              endsAt: end,
+              status: "pending",
+              googleHtmlLink: typeof event.htmlLink === "string" ? event.htmlLink : null,
+              ...clearSyncError(),
+              sourceUpdatedAt: dateValue(event.updated),
+              updatedAt: new Date(),
             },
-            principal: req.auth!,
-            request: req,
-          });
-          if (notification) notificationsPrepared += 1;
+          }).returning();
+          if (!existing && upserted) {
+            const [eventCity] = await db.select({ name: citiesTable.name }).from(citiesTable).where(eq(citiesTable.id, cityId));
+            const { share } = await calendarShareForScope(calendarWeekStart(start), req.auth!, `Agenda de ${calendarWeekStart(start)}`);
+            const notification = await automaticCalendarNotification({
+              triggerType: "event_imported",
+              dedupeKey: `event_imported:${upserted.id}`,
+              share,
+              event: {
+                id: upserted.id,
+                title: upserted.title,
+                startsAt: upserted.startsAt,
+                endsAt: upserted.endsAt,
+                cityId: upserted.cityId,
+                cityName: eventCity?.name ?? "Cidade não informada",
+                location: upserted.location,
+              },
+              principal: req.auth!,
+              request: req,
+            });
+            if (notification) notificationsPrepared += 1;
+          }
+          googleImported += 1;
         }
-        googleImported += 1;
+        pageToken = payload.nextPageToken;
+        if (pageToken && pageCount >= maxPages) {
+          truncated = true;
+          break;
+        }
+      } while (pageToken);
+      if (truncated) {
+        const message = `A sincronização foi parcial após ${maxPages} páginas; execute novamente para continuar.`;
+        errors.push(message);
+        await recordSyncState("google", "error", message);
+      } else {
+        await recordSyncState("google", "ok");
       }
-      await recordSyncState("google", "ok");
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : "Falha ao sincronizar Google Calendar.";
+      const message = reason instanceof GoogleCalendarOAuthError
+        ? reason.code === "reauthorization_required"
+          ? "A conexão com o Google Calendar expirou; um administrador precisa reconectar a conta."
+          : "Não foi possível autenticar no Google Calendar. Verifique a conexão e a configuração."
+        : "Falha ao sincronizar Google Calendar.";
       errors.push(message);
       await recordSyncState("google", "error", message);
     }
@@ -1989,6 +2030,8 @@ router.post(
       googleCancelled,
       notificationsPrepared,
       errors,
+      truncated,
+      pages: pageCount,
       syncedAt: new Date().toISOString(),
     });
   },

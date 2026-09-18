@@ -24,6 +24,8 @@ tags:
     description: Material catalog and city withdrawals
   - name: sheets
     description: Read-only Google Sheets integration
+  - name: google-calendar
+    description: Administrative OAuth connection to Google Calendar
 security:
   - BearerAuth: []
 paths:
@@ -41,6 +43,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /calendar/google/status:
+    get:
+      operationId: getGoogleCalendarConnectionStatus
+      tags: [google-calendar]
+      summary: Read Google Calendar connection status
+      description: Requires global access-control permission (`rbac:manage`); never returns credentials.
+      responses:
+        "200":
+          description: Connection and server-side configuration status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoogleCalendarConnectionStatus"
+        "401":
+          description: Authentication required
+        "403":
+          description: Global access-control permission required
+  /calendar/google/connect:
+    post:
+      operationId: beginGoogleCalendarAuthorization
+      tags: [google-calendar]
+      summary: Begin Google Calendar OAuth authorization
+      description: Requires `rbac:manage`. Sets a short-lived HttpOnly correlation cookie and returns an authorization URL.
+      responses:
+        "200":
+          description: Authorization URL created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GoogleCalendarAuthorizationStart"
+        "401":
+          description: Authentication required
+        "403":
+          description: Global access-control permission required
+        "503":
+          description: OAuth server configuration is incomplete
+  /calendar/google/callback:
+    get:
+      operationId: completeGoogleCalendarAuthorization
+      tags: [google-calendar]
+      summary: Complete Google Calendar OAuth authorization
+      description: Public Google redirect endpoint; requires a matching short-lived state cookie and one-time state in Neon. Redirects to `/acessos` with a non-sensitive result marker.
+      security: []
+      parameters:
+        - in: query
+          name: state
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: code
+          schema:
+            type: string
+        - in: query
+          name: error
+          schema:
+            type: string
+        - in: cookie
+          name: ea_google_calendar_oauth_state
+          required: true
+          schema:
+            type: string
+      responses:
+        "303":
+          description: Redirect to the access-control page with a completion result
+          headers:
+            Location:
+              schema:
+                type: string
   /auth/login:
     post:
       operationId: login
@@ -1159,3 +1230,28 @@ components:
           sourceSheet,
           sourceRow,
         ]
+    GoogleCalendarConnectionStatus:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        missingConfiguration:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [not_connected, connected, reauthorization_required]
+        connectedAt:
+          type: ["string", "null"]
+          format: date-time
+        calendarId:
+          type: string
+      required: [configured, missingConfiguration, status, connectedAt, calendarId]
+    GoogleCalendarAuthorizationStart:
+      type: object
+      properties:
+        authorizationUrl:
+          type: string
+          format: uri
+      required: [authorizationUrl]

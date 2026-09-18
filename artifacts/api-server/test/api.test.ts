@@ -170,6 +170,9 @@ before(async () => {
         htmlLink: "https://calendar.google.com/event/task-9",
       });
     }
+    if (path.includes("pageToken=task9-page-2")) {
+      return Response.json({ items: [] });
+    }
     return Response.json({
       items: [
         {
@@ -191,6 +194,7 @@ before(async () => {
         },
         { id: "google-cancelled-task-9", status: "cancelled" },
       ],
+      nextPageToken: "task9-page-2",
     });
   });
 
@@ -324,6 +328,8 @@ test("confirma RBAC, agenda, aviso, compartilhamento e escopo operacional", asyn
     }),
   });
   assert.equal(deniedCalendarCreate.status, 403);
+  const deniedCalendarConnection = await request("/api/calendar/google/status", coordinator);
+  assert.equal(deniedCalendarConnection.status, 403);
 
   const createdEvent = await request("/api/calendar/events", admin, {
     method: "POST",
@@ -348,6 +354,8 @@ test("confirma RBAC, agenda, aviso, compartilhamento e escopo operacional", asyn
   const synced = await request("/api/calendar/sync", admin, { method: "POST" });
   assert.equal(synced.status, 200);
   assert.equal(synced.body.imported, 2);
+  assert.equal(synced.body.pages, 2);
+  assert.equal(synced.body.truncated, false);
   assert.ok(synced.body.notificationsPrepared >= 1);
   const notifications = await request("/api/calendar/notifications", admin);
   assert.equal(notifications.status, 200);

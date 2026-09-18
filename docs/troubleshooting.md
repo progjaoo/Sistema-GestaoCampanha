@@ -6,7 +6,7 @@ Use a configuração desta branch, que fornece defaults. Em Vercel, confirme que
 
 ## `/api` retorna 404
 
-Confirme que `api/index.ts` existe na raiz, que o deploy foi feito a partir da raiz e que a regra `/api/:path*` aparece antes do fallback `/index.html`.
+Confirme que `api/index.mjs` existe na raiz, que o deploy foi feito a partir da raiz e que a regra `/api/:path*` aparece antes do fallback `/index.html`.
 
 ## Login retorna erro de banco
 

@@ -18,7 +18,7 @@ O projeto veio com modelo de execução Replit: o backend exigia `PORT`, o Vite 
 
 As alterações desta branch:
 
-- criam `api/index.ts` para exportar o Express como Function;
+- criam `api/index.mjs` para importar o Express compilado como Function;
 - criam `vercel.json` para build do frontend, saída estática, roteamento `/api` e fallback SPA;
 - usam defaults de build Vite compatíveis com Vercel e desenvolvimento local;
 - substituem a dependência de Replit em produção por Google Sheets API nativa com escopo `spreadsheets.readonly`;

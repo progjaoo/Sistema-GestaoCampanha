@@ -12,7 +12,7 @@ O projeto existente deve ser reaproveitado. Não delete, resete ou recrie a bran
 
 ## Configuração
 
-1. No Neon, copie a connection string pooled da branch `production`.
+1. No Neon, copie a connection string pooled da branch `production` para o runtime Vercel.
 2. Cadastre-a como `DATABASE_URL` no Vercel em `Preview` e `Production` conforme o ambiente.
 3. Para desenvolvimento local, use uma cópia segura em `.env`.
 4. Aplique o schema:
@@ -26,6 +26,8 @@ pnpm --filter @workspace/db run push
 ```bash
 pnpm --filter @workspace/scripts run seed:campaign
 ```
+
+Para migrations, use a connection string direta (sem `-pooler`), de preferência em uma branch Neon de teste. A migration aditiva do OAuth Calendar fica em `lib/db/migrations/20260918_google_calendar_oauth.sql` e pode ser aplicada com `pnpm --filter @workspace/db run migrate:google-calendar` após definir `DATABASE_URL` para a branch correta. Não execute em Production antes de revisar a migration e confirmar backup/branch; não use a URL pooled para migrations.
 
 O seed é idempotente e valida as contagens esperadas antes de inserir. Faça uma cópia/branch de teste antes de alterar a produção.
 
